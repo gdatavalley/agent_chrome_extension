@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browser Agent Extension — UI mockups</title>
+
+<!-- PREVIEW ONLY. In the extension these fonts MUST be bundled as local
+     WOFF2 subsets. Loading them from a CDN leaks a request to Google on
+     every panel open, which contradicts the product's privacy posture.
+     See browser-agent-extension-ui-spec.md section 2.2. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="tokens.css">
+<style>
+  /* Mockup harness only — NOT part of the product. */
+  body { background: var(--wash); padding: 40px 24px 80px; }
+  .sheet { max-width: 860px; margin: 0 auto; }
+  .doc-title { margin-bottom: 40px; }
+  .doc-title h1 { font-size: 28px; font-weight: 500; margin: 0 0 8px; }
+  .doc-title p { color: var(--ink-60); margin: 0; max-width: 62ch; line-height: 1.6; }
+  .phase {
+    font-family: var(--font-data); font-size: 11px; color: var(--ink-60);
+    text-transform: none; letter-spacing: 0;
+    border-top: 1px solid var(--rule); padding-top: 12px;
+    margin: 56px 0 20px;
+  }
+  .shot { margin-bottom: 28px; }
+  .shot > figcaption {
+    font-size: 13px; font-weight: 500; margin-bottom: 4px;
+  }
+  .shot > .why { font-size: 13px; color: var(--ink-60); margin: 0 0 12px; max-width: 62ch; line-height: 1.6; }
+  .frame { background: var(--paper); border-radius: 12px; padding: 20px; display: flex; gap: 20px; flex-wrap: wrap; }
+  .dead { opacity: .45; }
+  .ico { width: 1em; height: 1em; display: inline-block; vertical-align: -.125em; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .ico--lg { font-size: 19px; }
+  .ico--md { font-size: 17px; }
+  .ico--sm { font-size: 16px; }
+</style>
+</head>
+<body>
+
+<!-- Icon sprite. Tabler-style outline paths, 24x24 viewBox. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M10.3 4.3a1.9 1.9 0 013.4 0l.3.6a1.9 1.9 0 002.3.9l.6-.2a1.9 1.9 0 012.4 2.4l-.2.6a1.9 1.9 0 00.9 2.3l.6.3a1.9 1.9 0 010 3.4l-.6.3a1.9 1.9 0 00-.9 2.3l.2.6a1.9 1.9 0 01-2.4 2.4l-.6-.2a1.9 1.9 0 00-2.3.9l-.3.6a1.9 1.9 0 01-3.4 0l-.3-.6a1.9 1.9 0 00-2.3-.9l-.6.2a1.9 1.9 0 01-2.4-2.4l.2-.6a1.9 1.9 0 00-.9-2.3l-.6-.3a1.9 1.9 0 010-3.4l.6-.3a1.9 1.9 0 00.9-2.3l-.2-.6a1.9 1.9 0 012.4-2.4l.6.2a1.9 1.9 0 002.3-.9z"/><circle cx="12" cy="12" r="2.5"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12M9 7V4h6v3"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.2 3.9L2.6 17a2 2 0 001.7 3h15.4a2 2 0 001.7-3L13.8 3.9a2 2 0 00-3.6 0z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5L19 8"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+</svg>
+
+<div class="sheet">
+
+<div class="doc-title">
+  <h1>UI mockups</h1>
+  <p><b>v0.3.1 &middot; 4 September 2026</b> &mdash; matches <code class="mono">browser-agent-extension-ui-spec.md</code> v0.3.1. Static reference for the coding agent, in the order a user meets them. Styling comes entirely from <code class="mono">tokens.css</code> — import that rather than copying values out of this file. Grey harness chrome (captions, page background, section rules) is not part of the product.</p>
+</div>
+
+<!-- ============================================================ -->
+<div class="phase">Phase 1 &mdash; Install &amp; onboarding · full tab, 560px column</div>
+
+<figure class="shot">
+  <figcaption>01 · Welcome</figcaption>
+  <p class="why">No hero image. The third sentence is the hero — it sets an accurate expectation of an unreliable process that asks permission.</p>
+  <div class="frame">
+    <div class="page page--onboarding">
+      <div class="step-count mono">1 of 6</div>
+      <h1 class="h1" style="margin:20px 0 18px">Your browser, working on its own</h1>
+      <p class="prose" style="color:var(--ink-60); font-size:15px; margin:0 0 12px">Describe a task. The agent works through it in your own browser, using the accounts you're already signed in to.</p>
+      <p class="prose" style="color:var(--ink-60); font-size:15px; margin:0 0 24px">It shows you every step and stops before anything it can't undo.</p>
+      <button class="btn btn--solid" style="padding:0 22px">Get started</button>
+    </div>
+  </div>
+</figure>
+
+<figure class="shot">
+  <figcaption>02 · Provider choice</figcaption>
+  <p class="why">Hosted is nudged: full card, solid button. Bring-your-own-key is demoted to a text link. Both statements must stay literally true — see general spec &sect;8.1.</p>
+  <div class="frame">
+    <div class="page page--onboarding">
+      <div class="step-count mono">2 of 6</div>
+      <h2 class="h2" style="margin:18px 0 20px">How should the agent get its intelligence?</h2>
+      <div style="border:1px solid var(--ink-35); border-radius:var(--r-card); padding:18px; margin-bottom:16px">
+        <div class="lead" style="margin-bottom:9px">We handle it</div>
+        <p class="prose" style="color:var(--ink-60); margin:0 0 16px">Nothing to set up, and 500 free credits to start &mdash; about six typical tasks. Page content passes through our servers to OpenAI, which doesn't train on API data.</p>
+        <button class="btn btn--solid" style="padding:0 22px">Continue</button>
+      </div>
+      <p class="prose" style="color:var(--ink-60); margin:0">Already have an API key? <b style="color:var(--ink); font-weight:500">Use your own key instead</b> &mdash; free, and nothing passes through us.</p>
+    </div>
+  </div>
+</figure>
+
+<figure class="shot">
+  <figcaption>03 · Key entry &nbsp;<span class="meta">(BYOK path only)</span></figcaption>
+  <p class="why">Test performs a real one-token round trip. Never accept an unverified key — an invalid key discovered mid-run ruins the first task. <b>Selecting Gemini adds a mandatory warning</b> (second frame): on Google's free tier, page content may be used to train Google's models and reviewers may read it. Tier is not detectable from the key string, so confirmation is required. Suppress for EEA, Swiss and UK users, who get paid-tier terms on all services.</p>
+  <div class="frame">
+    <div class="page page--onboarding">
+      <div class="step-count mono">3 of 6</div>
+      <h2 class="h2" style="margin:18px 0 20px">Your API key</h2>
+      <div class="setting-row" style="border-top:none">
+        <span>Provider</span>
+        <span class="stepper" style="display:inline-flex; align-items:center; gap:8px">OpenAI <svg class="ico ico--sm"><use href="#i-chev"/></svg></span>
+      </div>
+      <div style="display:flex; gap:8px; margin:12px 0 16px">
+        <input class="input" type="password" value="sk-proj-0000000000000000" aria-label="API key">
+        <button class="btn btn--outline" style="flex:none">Test</button>
+      </div>
+      <div style="background:var(--wash); border-radius:var(--r-ctrl); padding:12px 13px; margin-bottom:20px">
+        <div class="lead" style="font-size:13px; margin-bottom:6px">Where this is stored</div>
+        <p class="prose" style="color:var(--ink-60); margin:0; font-size:13px">Encrypted on this machine with Web Crypto and never sent anywhere except the provider you chose. Clearing browser data removes it.</p>
+      </div>
+      <button class="btn btn--solid" style="padding:0 22px">Continue</button>
+      <button class="btn btn--ghost" style="margin-left:8px">Skip for now</button>
+    </div>
+  </div>
+  <div class="frame" style="margin-top:12px">
+    <div class="page page--onboarding">
+      <div class="step-count mono">3 of 6</div>
+      <h2 class="h2" style="margin:18px 0 20px">Your API key</h2>
+      <div class="setting-row" style="border-top:none">
+        <span>Provider</span>
+        <span class="stepper" style="display:inline-flex; align-items:center; gap:8px">Google Gemini <svg class="ico ico--sm"><use href="#i-chev"/></svg></span>
+      </div>
+      <div style="display:flex; gap:8px; margin:12px 0 14px">
+        <input class="input" type="password" value="AIza00000000000000000000" aria-label="API key">
+        <button class="btn btn--outline" style="flex:none">Test</button>
+      </div>
+      <label style="display:flex; gap:9px; align-items:flex-start; margin-bottom:14px">
+        <input type="checkbox" style="margin-top:3px">
+        <span>This is a billing-enabled Google Cloud project</span>
+      </label>
+      <div class="alert" style="margin-bottom:20px">
+        <div class="lead" style="font-size:13px; margin-bottom:6px">Free Gemini keys aren't private</div>
+        <p class="prose" style="color:var(--ink-60); margin:0">On Google's free tier, page content the agent reads may be used to train Google's models, and reviewers may read it. Use a billing-enabled project.</p>
+      </div>
+      <button class="btn btn--solid" style="padding:0 22px">Continue</button>
+      <button class="btn btn--ghost" style="margin-left:8px">Skip for now</button>
+    </div>
+  </div>
+</figure>
+
+<figure class="shot">
+  <figcaption>03b · Hosted sign-in &nbsp;<span class="meta">(hosted path only)</span></figcaption>
+  <p class="why">The device-code flow (general spec §8.1b): the extension has already opened a tab and is polling. The code is the hero — mono, letter-spaced, selectable. Success advances without a button press; the poll resolving is the confirmation. <span class="mono">Get a new code</span> appears only near expiry (UI spec §6.2c), so it is not shown here.</p>
+  <div class="frame">
+    <div class="page page--onboarding">
+      <div class="step-count mono">3 of 6</div>
+      <h2 class="h2" style="margin:18px 0 20px">Confirm your sign-in</h2>
+      <p class="prose" style="color:var(--ink-60); font-size:15px; margin:0 0 20px">A tab just opened &mdash; sign in there and enter this code.</p>
+      <div class="mono" style="font-size:22px; letter-spacing:2px; margin-bottom:16px; user-select:all">WDJB-7QK4</div>
+      <div class="mono meta" style="margin-bottom:20px">Waiting for confirmation&hellip;</div>
+      <div style="display:flex; gap:8px">
+        <button class="btn btn--ghost">Open the tab again</button>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<figure class="shot">
+  <figcaption>04 · Permission explainer</figcaption>
+  <p class="why">Runs <b>before</b> Chrome's own dialog. The banner is a facsimile, not a screenshot — screenshots go stale across Chrome versions.</p>
+  <div class="frame">
+    <div class="page page--onboarding">
+      <div class="step-count mono">4 of 6</div>
+      <h2 class="h2" style="margin:18px 0 24px">Two things Chrome will ask you about</h2>
+
+      <div style="border-top:1px solid var(--rule); padding-top:14px; margin-bottom:22px">
+        <div class="lead" style="margin-bottom:8px">Site access</div>
+        <p class="prose" style="color:var(--ink-60); margin:0">The agent needs permission for each site you use it on. You grant them one at a time, and you can revoke any of them later. We never ask for access to all sites.</p>
+      </div>
+
+      <div style="border-top:1px solid var(--rule); padding-top:14px; margin-bottom:24px">
+        <div class="lead" style="margin-bottom:12px">The debugging banner</div>
+        <div style="background:var(--wash); border:1px solid var(--rule); border-radius:var(--r-ctrl); padding:9px 12px; display:flex; align-items:center; gap:9px; margin-bottom:13px">
+          <svg class="ico ico--sm" style="flex:none"><use href="#i-info"/></svg>
+          <span style="flex:1">Product name started debugging this browser</span>
+          <span class="muted">Cancel</span>
+        </div>
+        <p class="prose" style="color:var(--ink-60); margin:0">Chrome shows this bar whenever the agent is controlling a page. It's how Chrome tells you something has real control &mdash; we can't hide it, and you shouldn't want us to. It disappears when the run ends.</p>
+      </div>
+
+      <button class="btn btn--solid" style="padding:0 20px">Makes sense</button>
+    </div>
+  </div>
+</figure>
+
+<figure class="shot">
+  <figcaption>05 · First site grant &nbsp;&middot;&nbsp; 06 · Handoff</figcaption>
+  <p class="why">Offering the current tab as a radio removes typing for most users. The handoff opens the Tasks tab, not the panel — the panel has no idle state.</p>
+  <div class="frame">
+    <div class="page page--onboarding" style="flex:1; min-width:300px">
+      <div class="step-count mono">5 of 6</div>
+      <h2 class="h2" style="margin:18px 0 18px">Which site first?</h2>
+      <input class="input" placeholder="https://" style="margin-bottom:12px" aria-label="Site URL">
+      <label style="display:flex; gap:8px; align-items:center; margin-bottom:20px">
+        <input type="radio" name="site" checked>
+        <span class="mono" style="font-size:12px">expenses.acme-corp.com</span>
+        <span class="meta">(this tab)</span>
+      </label>
+      <button class="btn btn--solid" style="padding:0 20px">Grant access</button>
+    </div>
+    <div class="page page--onboarding" style="flex:1; min-width:300px">
+      <div class="step-count mono">6 of 6</div>
+      <h2 class="h2" style="margin:18px 0 18px">Ready</h2>
+      <p class="prose" style="color:var(--ink-60); margin:0 0 12px">Create your first task, then run it whenever you like.</p>
+      <p class="prose" style="color:var(--ink-60); margin:0 0 24px">Start with something small and reversible &mdash; reading and summarising rather than submitting.</p>
+      <button class="btn btn--solid" style="padding:0 20px">Create a task</button>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ -->
+<div class="phase">Phase 2 &mdash; First task · Tasks tab</div>
+
+<figure class="shot">
+  <figcaption>07 · Tasks, empty</figcaption>
+  <p class="why">Empty state invites rather than apologises. Never "Nothing here yet."</p>
+  <div class="frame">
+    <div class="page" style="flex:1">
+      <h3 class="h3" style="margin-bottom:10px">Tasks</h3>
+      <p class="prose" style="color:var(--ink-60); margin:0 0 20px">Start with something you'd otherwise do by hand twice a week. Reading and summarising is a safer first try than submitting.</p>
+      <div class="grid-2">
+        <div class="add-card">
+          <svg class="ico" style="font-size:21px"><use href="#i-plus"/></svg>
+          <span>New task</span>
+        </div>
+        <div></div>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<figure class="shot">
+  <figcaption>08 · Compose</figcaption>
+  <p class="why">The product's only free-text input. Ends in <b>Save</b>, returning to Tasks — running is started from the grid. Read only defaults <b>on</b>; here it's off because this task writes files.</p>
+  <div class="frame">
+    <div class="page" style="flex:1">
+      <h3 class="h3" style="margin-bottom:18px">New task</h3>
+      <textarea class="textarea" style="margin-bottom:16px" aria-label="Task description">Download last month's invoices and rename them by vendor</textarea>
+
+      <div class="setting-row">
+        <span>Site</span>
+        <span class="mono" style="font-size:12px; color:var(--ink-60)">expenses.acme-corp.com</span>
+      </div>
+      <div class="setting-row">
+        <span>Read only</span>
+        <span style="display:flex; align-items:center; gap:9px">
+          <span class="mono meta">off</span>
+          <span class="toggle"><span class="toggle__knob"></span></span>
+        </span>
+      </div>
+      <div class="setting-row">
+        <span>Max steps</span>
+        <span class="stepper">25</span>
+      </div>
+      <div class="setting-row" style="border-bottom:1px solid var(--rule); margin-bottom:20px">
+        <span>Run automatically</span>
+        <span class="toggle"><span class="toggle__knob"></span></span>
+      </div>
+
+      <button class="btn btn--solid" style="padding:0 18px">Save</button>
+      <button class="btn btn--ghost" style="margin-left:8px">Cancel</button>
+    </div>
+  </div>
+</figure>
+
+<figure class="shot">
+  <figcaption>Task settings · schedule</figcaption>
+  <p class="why">The honesty block is mandatory. A schedule that silently fails is worse than no schedule. Scheduled runs are forced read-only because nobody can answer a confirm gate.</p>
+  <div class="frame">
+    <div class="page" style="flex:1">
+      <h3 class="h3" style="margin-bottom:20px">Reconcile March receipts</h3>
+      <div style="border-top:1px solid var(--rule); padding-top:14px">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px">
+          <span class="lead">Run automatically</span>
+          <span class="toggle toggle--on"><span class="toggle__knob"></span></span>
+        </div>
+        <div style="display:flex; gap:10px; margin-bottom:16px">
+          <span class="input" style="display:flex; align-items:center; justify-content:space-between">Mondays <svg class="ico ico--sm muted"><use href="#i-chev"/></svg></span>
+          <span class="input mono" style="width:120px; display:flex; align-items:center; justify-content:space-between">09:00 <svg class="ico ico--sm muted"><use href="#i-chev"/></svg></span>
+        </div>
+        <div style="background:var(--wash); border-radius:var(--r-ctrl); padding:12px 13px">
+          <p class="prose" style="color:var(--ink-60); margin:0 0 10px">Scheduled tasks only run while Chrome is open. If Chrome is closed at 09:00 on Monday, the task is marked as missed and waits for you.</p>
+          <p class="prose" style="color:var(--ink-60); margin:0">Because nobody is watching, scheduled runs stay read only. Anything needing approval pauses and notifies you instead.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ -->
+<div class="phase">Phase 3 &mdash; Tasks dashboard states · t0 &rarr; t1 &rarr; t2</div>
+
+<figure class="shot">
+  <figcaption>09 · t0 &mdash; nothing running</figcaption>
+  <p class="why">Play and trash per card. Card border is hairline when idle.</p>
+  <div class="frame">
+    <div class="page" style="flex:1">
+      <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:16px">
+        <h3 class="h3">Tasks</h3>
+        <span class="mono meta">4,120 of 7,000 credits</span>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card__title">Reconcile March receipts</div>
+          <div class="card__foot">
+            <span class="card__meta">2 days ago &middot; Mondays 09:00</span>
+            <span class="card__controls">
+              <svg class="ico ico--md icon-trash muted"><use href="#i-trash"/></svg>
+              <svg class="ico ico--lg muted"><use href="#i-play"/></svg>
+            </span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card__title">Export vendor list</div>
+          <div class="card__foot">
+            <span class="card__meta">yesterday &middot; manual</span>
+            <span class="card__controls">
+              <svg class="ico ico--md icon-trash muted"><use href="#i-trash"/></svg>
+              <svg class="ico ico--lg muted"><use href="#i-play"/></svg>
+            </span>
+          </div>
+        </div>
+        <div class="card">
+          <div style="display:flex; align-items:flex-start; gap:7px">
+            <span class="card__title">Download invoices</span>
+            <span class="pill">Didn't run</span>
+          </div>
+          <div class="card__foot">
+            <span class="card__meta">Fridays 17:00 &middot; Chrome closed</span>
+            <span class="card__controls">
+              <svg class="ico ico--md icon-trash muted"><use href="#i-trash"/></svg>
+              <svg class="ico ico--lg muted"><use href="#i-play"/></svg>
+            </span>
+          </div>
+        </div>
+        <div class="add-card">
+          <svg class="ico" style="font-size:21px"><use href="#i-plus"/></svg>
+          <span>New task</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<figure class="shot">
+  <figcaption>10 · t1 &mdash; two running</figcaption>
+  <p class="why">Live credit consumption per card, which is what token metering buys you. Trash is hidden while running, not disabled. Cap concurrency at 3 and refuse two runs on one origin.</p>
+  <div class="frame">
+    <div class="page" style="flex:1">
+      <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:16px">
+        <h3 class="h3">Tasks</h3>
+        <span class="mono meta">2 running</span>
+      </div>
+      <div class="grid-2">
+        <div class="card card--running">
+          <div class="card__title">Reconcile March receipts</div>
+          <div class="card__foot">
+            <span class="card__meta" style="color:var(--ink-60)">step 7 of 25 &middot; 34 credits</span>
+            <span class="card__controls"><svg class="ico ico--lg"><use href="#i-activity"/></svg></span>
+          </div>
+        </div>
+        <div class="card card--running">
+          <div class="card__title">Export vendor list</div>
+          <div class="card__foot">
+            <span class="card__meta" style="color:var(--ink-60)">step 3 of 15 &middot; 9 credits</span>
+            <span class="card__controls"><svg class="ico ico--lg"><use href="#i-activity"/></svg></span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card__title">Chase overdue POs</div>
+          <div class="card__foot">
+            <span class="card__meta">never run &middot; manual</span>
+            <span class="card__controls">
+              <svg class="ico ico--md icon-trash muted"><use href="#i-trash"/></svg>
+              <svg class="ico ico--lg muted"><use href="#i-play"/></svg>
+            </span>
+          </div>
+        </div>
+        <div class="add-card">
+          <svg class="ico" style="font-size:21px"><use href="#i-plus"/></svg>
+          <span>New task</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<figure class="shot">
+  <figcaption>11 · t2 &mdash; one waiting on you</figcaption>
+  <p class="why">Inverted icon plus a visible label. The action badge also switches to <span class="mono">!</span> so this is discoverable from anywhere in the browser.</p>
+  <div class="frame">
+    <div class="page" style="flex:1">
+      <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:16px">
+        <h3 class="h3">Tasks</h3>
+        <span class="mono meta">1 waiting on you</span>
+      </div>
+      <div class="grid-2">
+        <div class="card card--attention">
+          <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:10px">
+            <div style="flex:1; min-width:0">
+              <div class="card__title" style="margin-bottom:8px">Reconcile March receipts</div>
+              <span class="card__meta" style="color:var(--ink-60)">paused at step 11 &middot; 52 credits</span>
+            </div>
+            <span style="background:var(--ink); color:var(--paper); border-radius:var(--r-ctrl); width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; flex:none">
+              <svg class="ico ico--md"><use href="#i-warn"/></svg>
+            </span>
+          </div>
+          <span class="pill" style="padding:6px 9px">Action awaiting your approval</span>
+        </div>
+        <div class="card card--running">
+          <div class="card__title">Export vendor list</div>
+          <div class="card__foot">
+            <span class="card__meta" style="color:var(--ink-60)">step 9 of 15 &middot; 21 credits</span>
+            <span class="card__controls"><svg class="ico ico--lg"><use href="#i-activity"/></svg></span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card__title">Chase overdue POs</div>
+          <div class="card__foot">
+            <span class="card__meta">never run &middot; manual</span>
+            <span class="card__controls">
+              <svg class="ico ico--md icon-trash muted"><use href="#i-trash"/></svg>
+              <svg class="ico ico--lg muted"><use href="#i-play"/></svg>
+            </span>
+          </div>
+        </div>
+        <div class="add-card">
+          <svg class="ico" style="font-size:21px"><use href="#i-plus"/></svg>
+          <span>New task</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ -->
+<div class="phase">Phase 4 &mdash; The run · side panel, 360px. Header is ALWAYS the task name.</div>
+
+<figure class="shot">
+  <figcaption>12 · Planning &nbsp;&middot;&nbsp; 13 · Running</figcaption>
+  <p class="why">Planning restates the guardrails in force — the cheapest trust-building in the product, and it catches misconfiguration before it costs credits. Step 03 shows a failure as a first-class row, with two tier dots marking a screenshot escalation.</p>
+  <div class="frame">
+    <div class="panel">
+      <div class="panel__header">
+        <span class="panel__title">Download last month's inv&hellip;</span>
+        <svg class="ico ico--sm muted"><use href="#i-settings"/></svg>
+      </div>
+      <div class="panel__body">
+        <div class="lead" style="margin-bottom:18px">Reading the page&hellip;</div>
+        <ul class="ledger">
+          <li class="step">
+            <div class="step__gutter"></div>
+            <div class="step__content"><div class="step__action">Found 34 things to interact with</div></div>
+          </li>
+          <li class="step">
+            <div class="step__gutter"></div>
+            <div class="step__content" style="padding-bottom:0">
+              <div class="step__ref" style="line-height:1.7">expenses.acme-corp.com<br>can write &middot; max 25 steps<br>no new tabs</div>
+            </div>
+          </li>
+        </ul>
+      </div>
+      <div class="panel__footer" style="display:flex; align-items:center; gap:10px">
+        <button class="btn btn--solid" style="padding:0 18px">Stop</button>
+        <span class="mono meta">not started</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel__header">
+        <span class="panel__title">Download last month's inv&hellip;</span>
+        <svg class="ico ico--sm muted"><use href="#i-settings"/></svg>
+      </div>
+      <div class="panel__body">
+        <ul class="ledger">
+          <li class="step">
+            <div class="step__gutter"></div>
+            <div class="step__content">
+              <div class="step__head"><span>01</span><span>09:14:02 &middot;</span></div>
+              <div class="step__action"><b>Clicked</b> Invoices</div>
+              <div class="step__ref">&#10216;button #12&#10217;</div>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step__gutter"></div>
+            <div class="step__content">
+              <div class="step__head"><span>02</span><span>09:14:04 &middot;</span></div>
+              <div class="step__action"><b>Typed</b> 2026-07</div>
+              <div class="step__ref">&#10216;input #4&#10217;</div>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step__gutter"></div>
+            <div class="step__content">
+              <div class="step__head"><span>03</span><span>09:14:09 &middot;&middot;</span></div>
+              <div class="step__action"><b>Retried</b> after wait</div>
+              <div class="step__note">table didn't load</div>
+            </div>
+          </li>
+          <li class="step step--active">
+            <div class="step__gutter"></div>
+            <div class="step__content">
+              <div class="step__head"><span>04</span><span>09:14:11 &middot;</span></div>
+              <div class="step__action"><b>Clicked</b> Download all</div>
+              <div class="step__ref">&#10216;button #31&#10217;</div>
+            </div>
+          </li>
+        </ul>
+      </div>
+      <div class="panel__footer" style="display:flex; align-items:center; gap:10px">
+        <button class="btn btn--solid" style="padding:0 18px">Stop</button>
+        <span class="mono meta">step 4 of 25 &middot; 18 credits</span>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<figure class="shot">
+  <figcaption>14 · Confirm gate &nbsp;<span class="meta">(branch)</span></figcaption>
+  <p class="why">Inline in the ledger, never a floating overlay, so the audit trail stays continuous. Names the literal element it will activate. The red rule never carries meaning alone — the words do. No timeout, no default action. Enforced in code.</p>
+  <div class="frame">
+    <div class="panel">
+      <div class="panel__header">
+        <span class="panel__title">Download last month's inv&hellip;</span>
+        <svg class="ico ico--sm muted"><use href="#i-settings"/></svg>
+      </div>
+      <div class="panel__body">
+        <ul class="ledger">
+          <li class="step">
+            <div class="step__gutter"></div>
+            <div class="step__content">
+              <div class="step__head"><span>07</span><span>09:14:31 &middot;</span></div>
+              <div class="step__action"><b>Matched</b> 8 invoices</div>
+            </div>
+          </li>
+        </ul>
+        <div class="gate" role="alertdialog" aria-label="Needs your approval">
+          <div class="gate__title">
+            <svg class="ico ico--sm"><use href="#i-warn"/></svg>
+            <span>Needs your approval</span>
+          </div>
+          <div class="gate__detail">3 of these filenames already exist and would be replaced</div>
+          <div class="gate__ref">northgate-2026-07.pdf<br>brightline-2026-07.pdf<br>and 1 more</div>
+          <div class="gate__detail" style="margin-bottom:0">This can't be undone.</div>
+          <div class="gate__rule"></div>
+          <div class="gate__actions">
+            <button class="btn btn--outline" style="flex:1">Replace them</button>
+            <button class="btn btn--ghost" style="flex:1">Stop here</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<figure class="shot">
+  <figcaption>15 · Stuck &nbsp;<span class="meta">(branch)</span> &nbsp;&middot;&nbsp; 16 · Out of credits &nbsp;<span class="meta">(branch)</span></figcaption>
+  <p class="why"><b>Show me</b> puts the page in pick-an-element mode; the resolved element is cached against the page's structural fingerprint so the next run replays it free. Out of credits leads with "nothing was lost" — that's the difference between a paywall and a hostage situation.</p>
+  <div class="frame">
+    <div class="panel">
+      <div class="panel__header">
+        <span class="panel__title">Export the vendor list</span>
+        <svg class="ico ico--sm muted"><use href="#i-settings"/></svg>
+      </div>
+      <div class="panel__body">
+        <ul class="ledger">
+          <li class="step">
+            <div class="step__gutter"></div>
+            <div class="step__content">
+              <div class="step__head"><span>12</span><span>09:15:40 &middot;&middot;&middot;</span></div>
+              <div class="step__action">Couldn't find the export button</div>
+            </div>
+          </li>
+        </ul>
+        <div class="lead" style="margin-bottom:14px">Stopped after 12 steps</div>
+        <div class="meta" style="margin-bottom:7px">What I tried</div>
+        <div style="border-left:2px solid var(--rule); padding-left:10px; color:var(--ink-60); line-height:1.55; margin-bottom:16px">
+          Looked for a button named "Export" or "Download"<br>
+          Escalated to a screenshot<br>
+          Waited and retried twice
+        </div>
+        <div class="meta" style="margin-bottom:7px">What would help</div>
+        <div style="line-height:1.55; margin-bottom:18px">Show me where to click, or describe it differently.</div>
+        <div style="display:flex; gap:7px">
+          <button class="btn btn--solid">Show me</button>
+          <button class="btn btn--outline">Rephrase</button>
+          <button class="btn btn--ghost">Done</button>
+        </div>
+      </div>
+      <div class="panel__footer"><span class="mono meta">12 steps &middot; 41 credits &middot; stopped</span></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel__header">
+        <span class="panel__title">Reconcile March receipts</span>
+        <svg class="ico ico--sm muted"><use href="#i-settings"/></svg>
+      </div>
+      <div class="panel__body">
+        <div class="lead" style="margin-bottom:12px">You're out of credits</div>
+        <p style="color:var(--ink-60); line-height:1.55; margin:0 0 16px">This run stopped at step 11. Nothing was lost &mdash; it resumes from there once you top up.</p>
+        <div style="background:var(--wash); border-radius:var(--r-ctrl); padding:11px 12px; margin-bottom:18px">
+          <div class="meter__track"><div class="meter__fill" style="width:100%"></div></div>
+          <div class="meter__label">0 of 7,000 credits<br>this month's runs used 7,000</div>
+        </div>
+        <button class="btn btn--solid btn--block" style="margin-bottom:8px">Top up &mdash; 3,000 for $5</button>
+        <button class="btn btn--outline btn--block" style="margin-bottom:16px">Upgrade to Pro &mdash; 14,000/mo</button>
+        <p style="color:var(--ink-60); line-height:1.55; margin:0; padding-top:14px; border-top:1px solid var(--rule)">Or <b style="color:var(--ink); font-weight:500">use your own API key</b> and run without credits.</p>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<figure class="shot">
+  <figcaption>17 · Complete &nbsp;&middot;&nbsp; 18 · Survey &nbsp;<span class="meta">(first success only)</span></figcaption>
+  <p class="why">Credits consumed are shown at the moment value was delivered. Survey fires after first success, never before — two questions, tappable, one dismiss path.</p>
+  <div class="frame">
+    <div class="panel">
+      <div class="panel__header">
+        <span class="panel__title">Download last month's inv&hellip;</span>
+        <svg class="ico ico--sm muted"><use href="#i-settings"/></svg>
+      </div>
+      <div class="panel__body">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px">
+          <svg class="ico ico--md"><use href="#i-check"/></svg>
+          <span class="lead">Done</span>
+        </div>
+        <div class="mono meta" style="color:var(--ink-60); margin-bottom:14px">14 steps &middot; 2m 08s &middot; 46 credits</div>
+        <div style="line-height:1.55; margin-bottom:18px">8 invoices downloaded and renamed by vendor</div>
+        <div class="meta" style="margin-bottom:8px">Files</div>
+        <div class="mono meta" style="color:var(--ink-60); line-height:1.8; padding-bottom:16px; border-bottom:1px solid var(--rule)">northgate-2026-07.pdf<br>brightline-2026-07.pdf<br>and 6 more</div>
+        <div style="display:flex; flex-direction:column; gap:8px; margin-top:16px">
+          <button class="btn btn--solid btn--block">Save as a task</button>
+          <button class="btn btn--outline btn--block">View full log</button>
+        </div>
+      </div>
+      <div class="panel__footer">
+        <div class="meter__track"><div class="meter__fill" style="width:6%"></div></div>
+        <div class="meter__label">454 of 500 trial credits<br>about 5 more tasks like yours</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel__header">
+        <span class="panel__title">Download last month's inv&hellip;</span>
+        <svg class="ico ico--sm muted"><use href="#i-x"/></svg>
+      </div>
+      <div class="panel__body">
+        <p style="color:var(--ink-60); line-height:1.55; margin:0 0 20px">Two quick questions, so the next version is better for what you actually do.</p>
+        <div class="lead" style="font-size:13px; margin-bottom:9px">What did you come here to automate?</div>
+        <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:22px">
+          <button class="btn btn--outline" style="justify-content:flex-start">Expenses and receipts</button>
+          <button class="btn btn--outline" style="justify-content:flex-start">Procurement portals</button>
+          <button class="btn btn--outline" style="justify-content:flex-start">Forms and applications</button>
+          <button class="btn btn--outline" style="justify-content:flex-start">Something else</button>
+        </div>
+        <div class="lead" style="font-size:13px; margin-bottom:9px">How often do you do it?</div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px">
+          <button class="btn btn--outline">Daily</button>
+          <button class="btn btn--outline">Weekly</button>
+          <button class="btn btn--outline">Monthly</button>
+          <button class="btn btn--outline">Rarely</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<figure class="shot">
+  <figcaption>19 · Blocked &nbsp;<span class="meta">(can fire as early as step 12)</span></figcaption>
+  <p class="why">Listing what's already granted turns a scary permission moment into a routine one.</p>
+  <div class="frame">
+    <div class="panel">
+      <div class="panel__header">
+        <span class="panel__title">Chase overdue POs</span>
+        <svg class="ico ico--sm muted"><use href="#i-settings"/></svg>
+      </div>
+      <div class="panel__body">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px">
+          <svg class="ico ico--md"><use href="#i-lock"/></svg>
+          <span class="lead">No access to this site</span>
+        </div>
+        <p style="line-height:1.55; margin:0 0 12px">This task needs permission for <span class="mono" style="font-size:12px">portal.vendorhub.com</span> before it can run.</p>
+        <p style="color:var(--ink-60); line-height:1.55; margin:0 0 18px">You can revoke it any time in Settings.</p>
+        <button class="btn btn--solid btn--block" style="margin-bottom:20px">Grant access</button>
+        <div class="meta" style="padding-top:14px; border-top:1px solid var(--rule); margin-bottom:8px">Already granted</div>
+        <div class="mono meta" style="color:var(--ink-60); line-height:1.8">expenses.acme-corp.com<br>mail.acme-corp.com</div>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<figure class="shot">
+  <figcaption>20 · Paused &mdash; detached</figcaption>
+  <p class="why">Fires on <span class="mono">chrome.debugger.onDetach</span>. The likeliest trigger is the user opening DevTools on the agent's tab, not dismissing the banner. <b>Not an error</b> — a resumable pause, and the first line must say so. Uses the standard <span class="mono">.alert</span>, never an inverted gate: nothing irreversible is pending. Names the actual cause, mapped from the detach reason, because a generic "connection lost" makes people assume the product is broken.</p>
+  <div class="frame">
+    <div class="panel">
+      <div class="panel__header">
+        <span class="panel__title">Download last month's inv&hellip;</span>
+        <svg class="ico ico--sm muted"><use href="#i-settings"/></svg>
+      </div>
+      <div class="panel__body">
+        <ul class="ledger">
+          <li class="step">
+            <div class="step__gutter"></div>
+            <div class="step__content">
+              <div class="step__head"><span>08</span><span>09:14:44 &middot;</span></div>
+              <div class="step__action"><b>Clicked</b> Next page</div>
+              <div class="step__ref">&#10216;button #19&#10217;</div>
+            </div>
+          </li>
+        </ul>
+        <div class="lead" style="margin-bottom:12px">Paused</div>
+        <div class="alert" style="margin-bottom:18px">
+          <p style="margin:0; line-height:1.55">DevTools took over this tab, so the agent lost control. Nothing was lost &mdash; it can pick up from step 8.</p>
+        </div>
+        <div style="display:flex; gap:8px">
+          <button class="btn btn--solid">Resume</button>
+          <button class="btn btn--outline">Stop</button>
+        </div>
+      </div>
+      <div class="panel__footer">
+        <span class="mono meta">8 steps &middot; 22 credits &middot; paused</span>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<figure class="shot">
+  <figcaption>Meter variants</figcaption>
+  <p class="why">Credits with a plain-language estimate from the user's own rolling average. BYOK has no denominator, so it gets a running total and <b>no bar</b> — drawing one would invent a limit that doesn't exist. Never recolour the bar at the low threshold.</p>
+  <div class="frame" style="flex-direction:column; gap:12px">
+    <div style="border:1px solid var(--rule); border-radius:var(--r-card); padding:11px 12px; width:360px">
+      <div class="meter__track"><div class="meter__fill" style="width:18%"></div></div>
+      <div class="meter__label">412 of 500 trial credits<br>about 5 more tasks like yours</div>
+    </div>
+    <div style="border:1px solid var(--rule); border-radius:var(--r-card); padding:11px 12px; width:360px">
+      <div class="meter__track"><div class="meter__fill" style="width:41%"></div></div>
+      <div class="meter__label">4,120 of 7,000 credits<br>about 62 more tasks like yours</div>
+    </div>
+    <div style="border:1px solid var(--rule); border-radius:var(--r-card); padding:11px 12px; width:360px">
+      <div class="meter__track"><div class="meter__fill" style="width:88%"></div></div>
+      <div class="meter__label">840 of 7,000 credits<br>running low &mdash; top up or upgrade</div>
+    </div>
+    <div style="border:1px solid var(--rule); border-radius:var(--r-card); padding:11px 12px; width:360px">
+      <div class="meter__label">318K tokens &middot; $1.84 this month<br>your key</div>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ -->
+<div class="phase">Phase 5 &mdash; Options page · full tab, nav + 720px content</div>
+
+<figure class="shot">
+  <figcaption>21 · Your data</figcaption>
+  <p class="why">The flagship screen — it's what makes the privacy claim credible. Per-site counts, per-site delete, full export, and an explicit statement of what is never stored.</p>
+  <div class="frame">
+    <div class="options" style="flex:1">
+      <div class="nav">
+        <div class="nav__item">Runs</div>
+        <div class="nav__item">Guardrails</div>
+        <div class="nav__item">Sites</div>
+        <div class="nav__item">Keys</div>
+        <div class="nav__item">Models</div>
+        <div class="nav__item nav__item--active">Your data</div>
+        <div class="nav__item">Spending</div>
+        <div class="nav__item">Account</div>
+      </div>
+      <div class="options__content">
+        <h3 class="h3" style="margin-bottom:10px">Your data</h3>
+        <p class="prose" style="color:var(--ink-60); margin:0 0 18px; max-width:58ch">The agent remembers the shape of pages it has used, so it works faster next time. This stays on your machine.</p>
+        <div class="mono meta" style="color:var(--ink-60); padding-bottom:12px; border-bottom:1px solid var(--rule)">142 pages &middot; 1.8 MB &middot; 6 sites</div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--rule)">
+          <span>expenses.acme-corp.com</span>
+          <span style="display:flex; align-items:center; gap:14px"><span class="mono meta">88</span><svg class="ico ico--sm muted"><use href="#i-x"/></svg></span>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--rule)">
+          <span>portal.vendorhub.com</span>
+          <span style="display:flex; align-items:center; gap:14px"><span class="mono meta">31</span><svg class="ico ico--sm muted"><use href="#i-x"/></svg></span>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--rule)">
+          <span>mail.acme-corp.com</span>
+          <span style="display:flex; align-items:center; gap:14px"><span class="mono meta">23</span><svg class="ico ico--sm muted"><use href="#i-x"/></svg></span>
+        </div>
+        <div style="display:flex; gap:9px; margin:18px 0 24px">
+          <button class="btn btn--outline">Export everything</button>
+          <button class="btn btn--danger">Delete all remembered pages</button>
+        </div>
+        <div style="border-top:1px solid var(--rule); padding-top:14px">
+          <div class="lead" style="font-size:13px; margin-bottom:8px">What's never stored</div>
+          <p class="prose" style="color:var(--ink-60); margin:0; max-width:58ch">Page text, form values, passwords, and anything matching a card or ID number. Only page structure and the steps that worked.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ -->
+<div class="phase">Deleted &mdash; do not build</div>
+
+<figure class="shot dead">
+  <figcaption>Panel launcher &nbsp;<span class="meta">SUPERSEDED by the Tasks tab</span></figcaption>
+  <p class="why">Redundant once the Tasks grid gained play, watch, warning and trash controls. The panel has no idle state: it is a run viewer only, and its header is always the current task name. The action icon opens the Tasks tab, not the panel &mdash; set <span class="mono">openPanelOnActionClick: false</span>.</p>
+</figure>
+
+<figure class="shot dead">
+  <figcaption>Panel idle with inline task input &nbsp;<span class="meta">SUPERSEDED by Compose</span></figcaption>
+  <p class="why">Created a second free-text input competing with the Tasks tab. There is now exactly one input in the product, in Compose.</p>
+</figure>
+
+</div>
+</body>
+</html>

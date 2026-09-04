@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Acme Expenses — spike target</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; color: #222; }
+  header { display: flex; gap: 18px; align-items: center; padding: 12px 20px; border-bottom: 1px solid #ddd; }
+  header nav a { margin-right: 14px; }
+  main { padding: 20px; max-width: 860px; }
+  .filters { display: flex; gap: 10px; margin: 16px 0; align-items: center; }
+  table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #eee; font-size: 14px; }
+  .pager { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
+  #toast { position: fixed; bottom: 18px; left: 18px; background: #222; color: #fff; padding: 9px 14px;
+           border-radius: 4px; opacity: 0; transition: opacity .15s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+  #cookie-banner { position: fixed; top: 0; left: 0; right: 0; background: #f4f4f4; border-bottom: 1px solid #ccc;
+                   padding: 12px 20px; display: flex; gap: 12px; align-items: center; z-index: 10; }
+  footer { padding: 20px; color: #777; font-size: 13px; }
+  footer a { margin-right: 12px; }
+</style>
+</head>
+<body>
+
+<div id="cookie-banner" role="dialog" aria-label="Cookie notice">
+  <span>We use cookies to keep you signed in.</span>
+  <button id="dismiss-banner">Dismiss</button>
+</div>
+
+<header>
+  <strong>Acme Expenses</strong>
+  <nav>
+    <a href="#dashboard">Dashboard</a>
+    <a href="#invoices">Invoices</a>
+    <a href="#vendors">Vendors</a>
+  </nav>
+  <input type="search" aria-label="Search invoices" placeholder="Search invoices">
+</header>
+
+<main>
+  <h1>Invoices</h1>
+
+  <div class="filters">
+    <label>Vendor <input type="text" id="vendor-filter" aria-label="Vendor filter" placeholder="e.g. Northgate"></label>
+    <label>Status
+      <select id="status-filter" aria-label="Status filter">
+        <option>All</option><option>Unpaid</option><option>Paid</option>
+      </select>
+    </label>
+    <button id="apply-filters" type="button">Apply filters</button>
+    <button id="reset-filters" type="button">Reset</button>
+  </div>
+
+  <p id="row-count">8 invoices</p>
+
+  <table aria-label="Invoices">
+    <thead><tr><th>Vendor</th><th>Date</th><th>Amount</th><th>Status</th><th></th><th></th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <div class="pager">
+    <button id="prev-page" type="button">Previous page</button>
+    <span id="page-num">Page 1 of 3</span>
+    <button id="next-page" type="button">Next page</button>
+  </div>
+</main>
+
+<footer>
+  <a href="#help">Help</a><a href="#privacy">Privacy</a><a href="#terms">Terms</a><a href="#status">Status</a>
+</footer>
+
+<div id="toast" role="status">Filters applied</div>
+
+<script>
+const vendors = ['Northgate', 'Brightline', 'Kestrel', 'Moorhouse', 'Aldercroft', 'Pennine', 'Vantage', 'Solbury'];
+let page = 1, filtered = false;
+
+function renderRows() {
+  const list = filtered ? vendors.slice(0, 3) : vendors;
+  document.getElementById('rows').innerHTML = list.map((v, i) => `
+    <tr>
+      <td>${v} Ltd</td><td>2026-0${(i % 8) + 1}-14</td><td>£${(420 + i * 37).toFixed(2)}</td>
+      <td>${i % 2 ? 'Paid' : 'Unpaid'}</td>
+      <td><button type="button" aria-label="Download ${v} invoice">PDF</button></td>
+      <td><button type="button" aria-label="Approve ${v} invoice">Approve</button></td>
+    </tr>`).join('');
+  document.getElementById('row-count').textContent = `${list.length} invoices`;
+  document.getElementById('page-num').textContent = `Page ${page} of 3`;
+}
+
+document.getElementById('dismiss-banner').addEventListener('click', () => {
+  document.getElementById('cookie-banner').remove();
+});
+document.getElementById('apply-filters').addEventListener('click', () => {
+  filtered = true; renderRows();
+  document.getElementById('toast').classList.add('show');
+});
+document.getElementById('reset-filters').addEventListener('click', () => {
+  filtered = false; page = 1; renderRows();
+  document.getElementById('toast').classList.remove('show');
+});
+document.getElementById('next-page').addEventListener('click', () => {
+  if (page < 3) { page += 1; renderRows(); }
+});
+document.getElementById('prev-page').addEventListener('click', () => {
+  if (page > 1) { page -= 1; renderRows(); }
+});
+renderRows();
+</script>
+</body>
+</html>

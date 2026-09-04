@@ -1,0 +1,52 @@
+{
+  "ok": true,
+  "attachMs": 2,
+  "totalMs": 75,
+  "steps": [
+    {
+      "goal": "Dismiss",
+      "picked": "⟨button #1⟩ \"Dismiss\"",
+      "rawAxNodes": 273,
+      "interactiveElements": 34,
+      "fullTreeChars": 6372,
+      "menuChars": 1001,
+      "menuTokensEst": 251,
+      "fullTreeTokensEst": 1593,
+      "perceiveMs": 23,
+      "actionMs": 6,
+      "verified": true,
+      "verifyDesc": "cookie banner removed",
+      "stepMs": 30
+    },
+    {
+      "goal": "Apply filters",
+      "picked": "⟨button #2⟩ \"Apply filters\"",
+      "rawAxNodes": 266,
+      "interactiveElements": 33,
+      "fullTreeChars": 6170,
+      "menuChars": 980,
+      "menuTokensEst": 245,
+      "fullTreeTokensEst": 1543,
+      "perceiveMs": 14,
+      "actionMs": 12,
+      "verified": true,
+      "verifyDesc": "toast shown",
+      "stepMs": 27
+    },
+    {
+      "goal": "Next page",
+      "picked": "⟨button #5⟩ \"Next page\"",
+      "rawAxNodes": 161,
+      "interactiveElements": 23,
+      "fullTreeChars": 3558,
+      "menuChars": 595,
+      "menuTokensEst": 149,
+      "fullTreeTokensEst": 890,
+      "perceiveMs": 11,
+      "actionMs": 3,
+      "verified": true,
+      "verifyDesc": "page advanced",
+      "stepMs": 15
+    }
+  ]
+}

@@ -12,13 +12,20 @@
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
     "compile": "tsc --noEmit",
+    "spike:serve": "node scripts/serve.mjs",
+    "spike": "node scripts/run-spike.mjs",
     "postinstall": "wxt prepare"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "dexie": "^4.4.5",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@types/chrome": "^0.2.8",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@wxt-dev/module-react": "^1.1.5",
