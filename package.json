@@ -13,13 +13,15 @@
     "zip:firefox": "wxt zip -b firefox",
     "compile": "tsc --noEmit",
     "spike:serve": "node scripts/serve.mjs",
-    "spike": "node scripts/run-spike.mjs",
+    "spike": "node scripts/run-e2e.mjs",
+    "e2e": "node scripts/run-e2e.mjs",
     "postinstall": "wxt prepare"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/ibm-plex-sans": "^5.3.0",
     "dexie": "^4.4.5",
+    "dexie-react-hooks": "^4.4.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "zod": "^4.5.4"
@@ -30,6 +32,7 @@
     "@types/react-dom": "^19.2.3",
     "@wxt-dev/module-react": "^1.1.5",
     "typescript": "^5.9.3",
+    "vitest": "^5.0.0",
     "web-ext": "^10.5.0",
     "wxt": "^0.21.3"
   }

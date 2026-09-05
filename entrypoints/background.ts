@@ -1,215 +1,237 @@
-// Milestone 0 spike — validates the debugger pipeline end to end:
-// attach → Accessibility.getFullAXTree → trim → index → resolve →
-// Input.dispatchMouseEvent → verify, with size and latency metrics.
-//
-// Throwaway by design (spec §13, Milestone 0). Not the production
-// architecture: the agent loop moves to an offscreen document in M1,
-// verification moves to content scripts in M2, and the element picker
-// is a deterministic stand-in for the model.
-
-const SPIKE_URL = 'http://localhost:8899/spike.html';
-const REPORT_URL = 'http://localhost:8899/report';
-const WAIT_RETRY_MS = 800; // spec §3.3: race condition → wait, retry identical observation
-
-const INTERACTIVE_ROLES = new Set([
-  'link', 'button', 'textbox', 'searchbox', 'combobox', 'listbox',
-  'checkbox', 'radio', 'menuitem', 'menuitemcheckbox', 'menuitemradio',
-  'tab', 'option', 'switch', 'slider', 'spinbutton', 'treeitem',
-]);
-const NAMELESS_OK = new Set(['textbox', 'searchbox', 'combobox', 'checkbox', 'radio', 'switch', 'slider', 'spinbutton']);
-
-type Send = (method: string, params?: Record<string, unknown>) => Promise<any>;
-
-interface IndexedElement {
-  index: number;
-  role: string;
-  name: string;
-  backendNodeId: number;
-}
-
-interface Perception {
-  elements: IndexedElement[];
-  menu: string;
-  rawNodes: number;
-  fullChars: number;
-  menuChars: number;
-  latencyMs: number;
-}
-
-interface StepResult {
-  goal: string;
-  picked: string;
-  rawAxNodes: number;
-  interactiveElements: number;
-  fullTreeChars: number;
-  menuChars: number;
-  menuTokensEst: number;
-  fullTreeTokensEst: number;
-  perceiveMs: number;
-  actionMs: number;
-  verified: boolean;
-  verifyDesc: string;
-  stepMs: number;
-}
-
-function axString(v: unknown): string {
-  const val = (v as { value?: unknown } | undefined)?.value;
-  return typeof val === 'string' ? val : '';
-}
+// Service worker entrypoint — thin event router, holds no state (spec §2.1).
+// Durable state lives in Dexie; orchestration lives in src/background/*.
+import { db } from '../src/memory/db';
+import { encryptText, decryptText } from '../src/shared/crypto';
+import type { KeyRecord, LLMProviderId } from '../src/shared/types';
+import type { Request, Response } from '../src/shared/messages';
+import type { DetachReason } from '../src/shared/types';
+import {
+  startRun, stopRun, stopAllRuns, resumeRun, resolveGate,
+  onDebuggerDetach, onLoopExited, handleAlarm, refreshBadge, notify,
+} from '../src/background/run-controller';
+import { ensureOffscreen } from '../src/background/offscreen';
+import { syncScheduleAlarms, handleScheduleAlarm, detectMissedSchedules } from '../src/background/scheduler';
 
 export default defineBackground(() => {
-  console.log('[spike] background alive, opening', SPIKE_URL);
-  // The SW opens the target tab itself: an externally-driven tab (puppeteer,
-  // DevTools) already has a debugger client attached and chrome.debugger
-  // would refuse with a conflict (spec §3.5's replaced_with_devtools).
-  chrome.tabs.create({ url: SPIKE_URL }).catch((err) =>
-    postReport({ ok: false, fatal: `tabs.create failed: ${String(err)}` }),
-  );
-  const timer = setInterval(async () => {
-    // tabs.query url filter uses match patterns, which reject ports —
-    // query broadly and match manually instead.
-    const tabs = await chrome.tabs.query({});
-    const tab = tabs.find((t) => t.url === SPIKE_URL);
-    if (tab?.id != null) {
-      clearInterval(timer);
-      runSpike(tab.id).catch((err) => postReport({ ok: false, fatal: String(err) }));
+  // The action icon opens the Tasks tab, never the panel (UI spec §4.1).
+  void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
+  chrome.action.onClicked.addListener(() => {
+    void chrome.tabs.create({ url: chrome.runtime.getURL('tasks.html') });
+  });
+
+  chrome.runtime.onInstalled.addListener((details) => {
+    if (details.reason === 'install') {
+      void chrome.tabs.create({ url: chrome.runtime.getURL('onboarding.html') });
     }
-  }, 500);
+    void refreshBadge();
+  });
+
+  chrome.runtime.onStartup.addListener(() => {
+    void (async () => {
+      await syncScheduleAlarms();
+      await detectMissedSchedules();
+      await refreshBadge();
+    })();
+  });
+
+  // Global kill switch (UI spec §4.3) — works whether or not the panel is open.
+  chrome.commands.onCommand.addListener((command) => {
+    if (command === 'halt-agent') void stopAllRuns();
+  });
+
+  // §3.5: involuntary detach is a first-class run state, not an error.
+  chrome.debugger.onDetach.addListener((source, reason) => {
+    if (source.tabId != null) void onDebuggerDetach(source.tabId, reason as DetachReason);
+  });
+
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name.startsWith('sched:')) void handleScheduleAlarm(alarm.name);
+    else void handleAlarm(alarm.name);
+  });
+
+  chrome.runtime.onMessage.addListener((msg: Request & { type: string }, _sender, reply) => {
+    void route(msg)
+      .then((result) => reply({ ok: true, result } satisfies Response))
+      .catch((err) => reply({ ok: false, error: err instanceof Error ? err.message : String(err) } satisfies Response));
+    return true; // async reply
+  });
 });
 
-async function postReport(body: Record<string, unknown>) {
-  console.log('[spike] report', JSON.stringify(body));
-  await fetch(REPORT_URL, { method: 'POST', body: JSON.stringify(body) }).catch(() => {});
-}
-
-async function runSpike(tabId: number) {
-  const target = { tabId };
-  const send: Send = (method, params = {}) => chrome.debugger.sendCommand(target, method, params);
-
-  const tAttach = performance.now();
-  await chrome.debugger.attach(target, '1.3');
-  const attachMs = performance.now() - tAttach;
-  console.log('[spike] debugger attached in', attachMs.toFixed(0), 'ms');
-
-  const steps = [
-    {
-      goal: 'Dismiss',
-      expectExpr: `!document.getElementById('cookie-banner')`,
-      expectDesc: 'cookie banner removed',
-    },
-    {
-      goal: 'Apply filters',
-      expectExpr: `document.getElementById('toast')?.classList.contains('show') === true`,
-      expectDesc: 'toast shown',
-    },
-    {
-      goal: 'Next page',
-      expectExpr: `document.getElementById('page-num')?.textContent?.trim() === 'Page 2 of 3'`,
-      expectDesc: 'page advanced',
-    },
-  ];
-
-  const results: StepResult[] = [];
-  try {
-    for (const step of steps) {
-      const t0 = performance.now();
-      const perception = await perceive(send);
-      const pick = pickElement(perception.elements, step.goal);
-      if (!pick) {
-        throw new Error(`picker found nothing named like "${step.goal}" among ${perception.elements.length} elements`);
+async function route(msg: Request & { type: string }): Promise<unknown> {
+  switch (msg.type) {
+    case 'cdp:exec': {
+      const res = await chrome.debugger.sendCommand({ tabId: msg.tabId }, msg.method, msg.params ?? {});
+      return res ?? {};
+    }
+    case 'run:start': {
+      const out = await startRun(msg.taskId);
+      if (out.error) throw new Error(out.error);
+      // Surface the run in the panel (UI §4.1: the panel opens when a run starts).
+      const win = await chrome.windows.getCurrent().catch(() => null);
+      if (win?.id != null) await chrome.sidePanel.open({ windowId: win.id }).catch(() => {});
+      await chrome.storage.session.set({ 'panel.currentRunId': out.runId });
+      return out;
+    }
+    case 'run:stop': return stopRun(msg.runId);
+    case 'run:stopAll': return stopAllRuns();
+    case 'run:resume': {
+      const out = await resumeRun(msg.runId);
+      if (out.error) throw new Error(out.error);
+      return out;
+    }
+    case 'gate:resolve': return resolveGate(msg.gateId, msg.approved);
+    case 'run:show-me': {
+      // Full element-picker overlay lands with the content-reader work; for
+      // now Show me resumes the run so the loop retries with fresh context.
+      const out = await resumeRun(msg.runId);
+      if (out.error) throw new Error(out.error);
+      return out;
+    }
+    case 'keys:add': return addKey(msg.provider, msg.key, msg.billingEnabledConfirmed);
+    case 'keys:test': return testKey(msg.keyId);
+    case 'keys:delete': return db.keys.delete(msg.keyId);
+    case 'task:save': return db.tasks.put(msg.task);
+    case 'task:delete': {
+      await db.tasks.delete(msg.taskId);
+      await syncScheduleAlarms();
+      return null;
+    }
+    case 'permissions:request': {
+      const granted = await chrome.permissions.request({ origins: [msg.origin] });
+      return { granted };
+    }
+    case 'permissions:revoke': {
+      const removed = await chrome.permissions.remove({ origins: [msg.origin] });
+      return { removed };
+    }
+    case 'panel:watch': {
+      await chrome.storage.session.set({ 'panel.currentRunId': msg.runId });
+      const win = await chrome.windows.getCurrent().catch(() => null);
+      if (win?.id != null) await chrome.sidePanel.open({ windowId: win.id }).catch(() => {});
+      return null;
+    }
+    case 'dev:report': {
+      // Harness hook (dev builds only): forward run telemetry to the local
+      // report server. No-ops when the server isn't there.
+      await fetch('http://localhost:8899/report', {
+        method: 'POST', body: JSON.stringify(msg.payload),
+      }).catch(() => {});
+      return null;
+    }
+    case 'dev:command': {
+      if (!import.meta.env.DEV) throw new Error('dev commands are dev-build only');
+      const cmd = msg.command;
+      if (cmd.kind === 'start' && cmd.task) {
+        const task = {
+          id: crypto.randomUUID(),
+          allowNewTabs: false, allowOffOrigin: false, allowIframes: true,
+          schedule: null, createdAt: Date.now(), maxSteps: 25,
+          readOnly: true, ...cmd.task,
+        } as import('../src/shared/types').Task;
+        await db.tasks.put(task);
+        if (cmd.mode) {
+          const { setLlmMode } = await import('../src/llm/resolve');
+          await setLlmMode(cmd.mode as 'mock' | 'byok' | 'hosted');
+        }
+        const out = await startRun(task.id);
+        if (out.error) throw new Error(out.error);
+        return out;
       }
-
-      const tAction = performance.now();
-      const point = await resolvePoint(send, pick);
-      await clickAt(send, point);
-      const actionMs = performance.now() - tAction;
-
-      const verified = await verifyWithRetry(send, step.expectExpr);
-      const stepMs = performance.now() - t0;
-
-      results.push({
-        goal: step.goal,
-        picked: `⟨${pick.role} #${pick.index}⟩ "${pick.name}"`,
-        rawAxNodes: perception.rawNodes,
-        interactiveElements: perception.elements.length,
-        fullTreeChars: perception.fullChars,
-        menuChars: perception.menuChars,
-        menuTokensEst: Math.ceil(perception.menuChars / 4),
-        fullTreeTokensEst: Math.ceil(perception.fullChars / 4),
-        perceiveMs: Math.round(perception.latencyMs),
-        actionMs: Math.round(actionMs),
-        verified,
-        verifyDesc: step.expectDesc,
-        stepMs: Math.round(stepMs),
-      });
-      console.log(`[spike] step "${step.goal}" → ${pick.name} verified=${verified} in ${stepMs.toFixed(0)}ms`);
+      if (cmd.kind === 'approveGates') {
+        const pending = await db.gates.where('status').equals('pending').toArray();
+        for (const g of pending) await resolveGate(g.id, true);
+        return { approved: pending.length };
+      }
+      if (cmd.kind === 'stopAll') return stopAllRuns();
+      throw new Error(`unknown dev command: ${cmd.kind}`);
     }
+    case 'loop:exited': return onLoopExited((msg as unknown as { runId: string }).runId);
+    default:
+      throw new Error(`unknown message type: ${(msg as { type: string }).type}`);
+  }
+}
 
-    await postReport({
-      ok: results.every((s) => s.verified),
-      attachMs: Math.round(attachMs),
-      totalMs: Math.round(performance.now() - tAttach),
-      steps: results,
+// ---------------------------------------------------------------- keys ---
+// §10.5: verify with a real one-token round trip before accepting; encrypt
+// with Web Crypto; never render a stored key back (§11).
+
+const PROVIDER_ENDPOINTS: Partial<Record<LLMProviderId, { origin: string; url: string }>> = {
+  openai: { origin: 'https://api.openai.com/*', url: 'https://api.openai.com/v1/chat/completions' },
+  gemini: { origin: 'https://generativelanguage.googleapis.com/*', url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent' },
+};
+
+async function verifyKeyRoundTrip(provider: LLMProviderId, key: string): Promise<void> {
+  const ep = PROVIDER_ENDPOINTS[provider];
+  if (!ep) throw new Error(`unknown provider ${provider}`);
+  const granted = await chrome.permissions.request({ origins: [ep.origin] });
+  if (!granted) throw new Error(`access to ${ep.origin} was not granted`);
+
+  if (provider === 'openai') {
+    const res = await fetch(ep.url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model: 'gpt-5.6-luna', max_tokens: 1,
+        messages: [{ role: 'user', content: 'ping' }],
+      }),
     });
-  } finally {
-    await chrome.debugger.detach(target).catch(() => {});
+    if (res.status === 401 || res.status === 403) throw new Error('The provider rejected that key.');
+    if (!res.ok) throw new Error(`The provider answered ${res.status} — try again in a moment.`);
+    return;
   }
+  throw new Error(`verification for ${provider} is not wired yet`);
 }
 
-async function perceive(send: Send): Promise<Perception> {
-  const t0 = performance.now();
-  const { nodes } = await send('Accessibility.getFullAXTree');
-
-  let fullChars = 0;
-  const elements: IndexedElement[] = [];
-  for (const n of nodes as any[]) {
-    if (n.ignored) continue;
-    const role = axString(n.role);
-    const name = axString(n.name);
-    fullChars += role.length + name.length + 6;
-    if (INTERACTIVE_ROLES.has(role) && (name.length > 0 || NAMELESS_OK.has(role))) {
-      // AXNode exposes the DOM node as backendDOMNodeId (not backendNodeId).
-      elements.push({ index: elements.length + 1, role, name, backendNodeId: n.backendDOMNodeId });
-    }
-  }
-  const menu = elements.map((e) => `${e.index}. ${e.role} "${e.name}"`).join('\n');
-  return {
-    elements,
-    menu,
-    rawNodes: (nodes as unknown[]).length,
-    fullChars,
-    menuChars: menu.length,
-    latencyMs: performance.now() - t0,
+async function addKey(
+  provider: LLMProviderId,
+  key: string,
+  billingEnabledConfirmed?: boolean,
+): Promise<{ keyId: string; label: string }> {
+  await verifyKeyRoundTrip(provider, key);
+  const { ciphertext, iv } = await encryptText(key);
+  const rec: KeyRecord = {
+    id: crypto.randomUUID(),
+    provider,
+    label: `${key.slice(0, 3)}··········${key.slice(-4)}`,
+    ciphertext,
+    iv,
+    billingEnabledConfirmed,
+    createdAt: Date.now(),
+    lastVerifiedAt: Date.now(),
   };
+  await db.keys.put(rec);
+  return { keyId: rec.id, label: rec.label };
 }
 
-// Deterministic stand-in for the model: the real loop hands `menu` to the LLM
-// and it returns an index. Real-key verification of usage/caching fields is a
-// separate M0 item pending an API key.
-function pickElement(elements: IndexedElement[], goal: string): IndexedElement | undefined {
-  const g = goal.toLowerCase();
-  return elements.find((e) => e.name.toLowerCase() === g)
-      ?? elements.find((e) => e.name.toLowerCase().includes(g));
+async function testKey(keyId: string): Promise<{ verified: boolean }> {
+  const rec = await db.keys.get(keyId);
+  if (!rec) throw new Error('key not found');
+  const key = await decryptText(rec.ciphertext, rec.iv);
+  await verifyKeyRoundTrip(rec.provider, key);
+  await db.keys.update(keyId, { lastVerifiedAt: Date.now() });
+  return { verified: true };
 }
 
-async function resolvePoint(send: Send, el: IndexedElement): Promise<{ x: number; y: number }> {
-  await send('DOM.scrollIntoViewIfNeeded', { backendNodeId: el.backendNodeId }).catch(() => {});
-  const { model } = await send('DOM.getBoxModel', { backendNodeId: el.backendNodeId });
-  const q = model.border as [number, number, number, number, number, number, number, number];
-  return { x: (q[0] + q[2] + q[4] + q[6]) / 4, y: (q[1] + q[3] + q[5] + q[7]) / 4 };
-}
+// Re-sync badge whenever runs change underneath us (SW restarts lose nothing
+// — Dexie is the source of truth). Hooks fire inside Dexie's transaction, so
+// the actual read is deferred — doing async DB work inside a hook callback
+// kills the transaction (DexieError).
+let badgeTimer: ReturnType<typeof setTimeout> | undefined;
+const scheduleBadgeRefresh = () => {
+  clearTimeout(badgeTimer);
+  badgeTimer = setTimeout(() => void refreshBadge(), 50);
+};
+db.runs.hook('creating', scheduleBadgeRefresh);
+db.runs.hook('updating', scheduleBadgeRefresh);
+db.runs.hook('deleting', scheduleBadgeRefresh);
 
-async function clickAt(send: Send, { x, y }: { x: number; y: number }) {
-  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
-  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
-}
-
-async function verifyWithRetry(send: Send, expr: string): Promise<boolean> {
-  const check = async () => {
-    const res = await send('Runtime.evaluate', { expression: expr, returnByValue: true });
-    return res?.result?.value === true;
-  };
-  if (await check()) return true;
-  await new Promise((r) => setTimeout(r, WAIT_RETRY_MS));
-  return check();
+// ---------------------------------------------------------------------------
+// DEV ONLY — E2E harness wiring lives in the offscreen loop host (reporting)
+// and the dev:command message case above (commands). The SW deliberately does
+// NOT poll: MV3 kills it at ~30s idle and timers die with it.
+// The harness may also invoke commands directly in this context — a
+// runtime.sendMessage from the SW never loops back to its own listener.
+if (import.meta.env.DEV) {
+  (globalThis as Record<string, unknown>).__devCommand = (command: unknown) =>
+    route({ type: 'dev:command', command: command as never });
 }

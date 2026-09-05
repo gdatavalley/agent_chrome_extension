@@ -1,0 +1,353 @@
+/* ============================================================
+   Browser Agent Extension — design tokens & components
+   v0.2 — 3 September 2026
+   Companion to browser-agent-extension-ui-spec.md
+
+   This file is the single source of truth for colour, type,
+   spacing and component styling. The coding agent should import
+   it rather than re-deriving values from the mockups.
+   ============================================================ */
+
+/* ---------- 1. TOKENS ---------- */
+
+:root {
+  /* Colour. Seven values, six monochrome.
+     --alarm is used ONLY on irreversible confirmations,
+     and never as the sole carrier of meaning. */
+  --ink:      #000000;
+  --ink-60:   #666666;
+  --ink-35:   #A6A6A6;
+  --rule:     #E4E4E4;
+  --wash:     #F6F6F6;
+  --paper:    #FFFFFF;
+  --alarm:    #C8102E;
+
+  /* Type. Both families MUST be bundled as WOFF2 subsets.
+     Never load from a CDN — it leaks a request on every panel
+     open, which contradicts the product's positioning. */
+  --font-ui:   "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+
+  --fs-meta: 11px;   /* timestamps, indices, counts — never smaller */
+  --fs-body: 13px;   /* default */
+  --fs-lead: 15px;   /* panel headings, card titles */
+  --fs-h3:   18px;   /* options page sections */
+  --fs-h2:   22px;   /* onboarding steps */
+  --fs-h1:   28px;   /* welcome only */
+
+  /* Weights: 400 and 500 only. Never 600+. */
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* Radius is hierarchical, not uniform. */
+  --r-flat:  0;      /* ledger rows, dividers, single-sided borders */
+  --r-ctrl:  4px;    /* buttons, inputs, chips, inset surfaces */
+  --r-card:  8px;    /* cards, modals, panels */
+  --r-page: 12px;    /* onboarding pages */
+}
+
+/* Dark mode is mandatory — Chrome side panels follow the browser theme.
+   --paper is #0A0A0A rather than pure black: a pure-black panel against
+   Chrome's own dark chrome reads as edgeless. This is the single
+   deliberate exception to true black and white. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink:    #FFFFFF;
+    --ink-60: #A0A0A0;
+    --ink-35: #6B6B6B;
+    --rule:   #2A2A2A;
+    --wash:   #161616;
+    --paper:  #0A0A0A;
+    --alarm:  #FF6B7A;
+  }
+}
+
+/* ---------- 2. BASE ---------- */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+.h1 { font-size: var(--fs-h1); font-weight: 500; line-height: 1.25; margin: 0; }
+.h2 { font-size: var(--fs-h2); font-weight: 500; line-height: 1.25; margin: 0; }
+.h3 { font-size: var(--fs-h3); font-weight: 500; line-height: 1.3;  margin: 0; }
+.lead { font-size: var(--fs-lead); font-weight: 500; margin: 0; }
+.meta { font-size: var(--fs-meta); color: var(--ink-35); }
+.muted { color: var(--ink-60); }
+.prose { max-width: 62ch; line-height: 1.65; }
+
+/* Focus ring — never remove. */
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* ---------- 3. SURFACES ---------- */
+
+/* Side panel. Design target 360px; must work at 320, must not
+   break at 560. Single column only. */
+.panel {
+  width: 360px;
+  min-width: 320px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-card);
+  display: flex;
+  flex-direction: column;
+}
+
+.panel__header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--rule);
+}
+/* Panel header text is ALWAYS the current task name.
+   The panel has no idle state — it is a run viewer only. */
+.panel__title {
+  font-size: var(--fs-body); font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.panel__body   { padding: var(--space-4) var(--space-3); flex: 1; }
+.panel__footer { padding: var(--space-3); border-top: 1px solid var(--rule); }
+
+/* Full-tab page. Onboarding 560px, options content capped 720px. */
+.page {
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-page);
+  padding: var(--space-5) var(--space-6);
+}
+.page--onboarding { max-width: 560px; }
+
+.step-count {
+  text-align: right;
+  font-family: var(--font-data);
+  font-size: var(--fs-meta);
+  color: var(--ink-35);
+}
+
+/* ---------- 4. CONTROLS ---------- */
+
+/* One solid button per view, maximum. */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 32px; padding: 0 var(--space-3);
+  font-family: inherit; font-size: var(--fs-body); font-weight: 500;
+  border-radius: var(--r-ctrl); border: 1px solid transparent;
+  background: none; color: var(--ink); cursor: pointer;
+  transition: background-color 80ms ease;
+}
+.btn--solid   { background: var(--ink); color: var(--paper); }
+.btn--solid:hover { opacity: .9; }
+.btn--outline { border-color: var(--rule); }
+.btn--outline:hover { border-color: var(--ink); }
+.btn--ghost   { color: var(--ink-60); }
+.btn--block   { width: 100%; }
+.btn:active   { transform: scale(.98); }
+/* Destructive text action — the only non-gate use of --alarm colour,
+   and it is always paired with a confirmation dialog. */
+.btn--danger  { color: var(--alarm); }
+
+.input, .textarea {
+  width: 100%; font-family: inherit; font-size: var(--fs-body);
+  color: var(--ink); background: var(--paper);
+  border: 1px solid var(--rule); border-radius: var(--r-ctrl);
+  padding: 0 var(--space-3);
+}
+.input { height: 36px; }
+.textarea { padding: var(--space-3); line-height: 1.6; min-height: 72px; resize: vertical; }
+.input::placeholder, .textarea::placeholder { color: var(--ink-35); }
+
+/* Toggle. ALWAYS paired with a text label stating current state —
+   a monochrome toggle alone is ambiguous. */
+.toggle {
+  width: 26px; height: 15px; border-radius: 8px; flex: none;
+  border: 1px solid var(--rule); background: var(--paper);
+  display: inline-flex; align-items: center; justify-content: flex-start;
+  padding: 0 2px; cursor: pointer;
+}
+.toggle__knob { width: 11px; height: 11px; border-radius: 50%; background: var(--ink-35); }
+.toggle--on { background: var(--ink); border-color: var(--ink); justify-content: flex-end; }
+.toggle--on .toggle__knob { background: var(--paper); }
+
+.stepper {
+  border: 1px solid var(--rule); border-radius: var(--r-ctrl);
+  padding: 3px var(--space-2);
+  font-family: var(--font-data); font-size: var(--fs-meta);
+}
+
+.setting-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-3); padding: var(--space-3) 0;
+  border-top: 1px solid var(--rule);
+}
+
+/* ---------- 5. METER ---------- */
+
+/* Credits, never tokens, never a percentage ring.
+   The label ALWAYS carries a plain-language estimate derived from
+   the user's own rolling average consumption. */
+.meter__track {
+  height: 4px; border-radius: 2px; background: var(--wash); overflow: hidden;
+  margin-bottom: 6px;
+}
+.meter__fill { height: 100%; background: var(--ink); }
+.meter__label {
+  font-family: var(--font-data); font-size: var(--fs-meta);
+  color: var(--ink-60); line-height: 1.6;
+}
+/* At >85% consumed, append a second label line. Do NOT recolour the
+   bar — that is what --alarm is reserved from. */
+
+/* ---------- 6. THE LEDGER ---------- */
+
+/* The signature element. A continuous hairline gutter with the active
+   step thickened to solid ink. Rows have no background, no border,
+   no radius — dense lists get rules, not cards. */
+.ledger { list-style: none; margin: 0; padding: 0; }
+
+.step { display: flex; gap: 10px; }
+.step__gutter { width: 2px; background: var(--rule); flex: none; }
+.step--active .step__gutter { width: 3px; background: var(--ink); }
+.step__content { flex: 1; min-width: 0; padding-bottom: var(--space-4); }
+.step--active .step__content { padding-bottom: 0; }
+
+.step__head {
+  display: flex; justify-content: space-between;
+  font-family: var(--font-data); font-size: var(--fs-meta); color: var(--ink-35);
+}
+.step__action { font-size: var(--fs-body); margin-top: 3px; }
+.step__action b { font-weight: 500; }
+.step__ref {
+  font-family: var(--font-data); font-size: var(--fs-meta);
+  color: var(--ink-60); margin-top: 2px;
+}
+.step__note { font-size: var(--fs-meta); color: var(--ink-60); margin-top: 2px; }
+
+/* Escalation tier, shown as dots. One = accessibility tree only,
+   two = tree plus screenshot, three = screenshot only.
+   Same model at every rung (see spec §7). */
+.tier { font-family: var(--font-data); font-size: var(--fs-meta); color: var(--ink-35); }
+
+/* ---------- 7. CONFIRM GATE ---------- */
+
+/* State is communicated by INVERSION, not colour. Renders inline in
+   the ledger, never as a floating overlay. role="alertdialog",
+   focus trapped, no timeout, no default action.
+   ENFORCED IN CODE — never requested in the prompt. */
+.gate {
+  background: var(--ink); color: var(--paper);
+  border-radius: var(--r-ctrl);
+  padding: var(--space-4) var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.gate__title {
+  display: flex; align-items: center; gap: 7px;
+  font-size: var(--fs-body); font-weight: 500; margin-bottom: var(--space-3);
+}
+.gate__detail { font-size: var(--fs-body); line-height: 1.5; margin-bottom: var(--space-3); }
+.gate__ref {
+  font-family: var(--font-data); font-size: var(--fs-meta);
+  opacity: .72; line-height: 1.6; margin-bottom: var(--space-3);
+}
+/* --alarm as a 2px rule, always accompanied by the words
+   "This can't be undone." Colour never carries meaning alone. */
+.gate__rule { height: 2px; background: var(--alarm); margin: var(--space-2) 0 var(--space-3); }
+.gate__actions { display: flex; gap: var(--space-2); }
+.gate .btn--outline { border-color: var(--paper); color: var(--paper); }
+.gate .btn--ghost { color: var(--paper); opacity: .75; }
+
+/* Lower-urgency attention: inverted pill or a single-sided ink rule. */
+.pill {
+  background: var(--ink); color: var(--paper);
+  font-size: var(--fs-meta); padding: 1px 6px;
+  border-radius: var(--r-ctrl); white-space: nowrap; flex: none;
+}
+.alert {
+  border-left: 2px solid var(--ink); border-radius: var(--r-flat);
+  background: var(--wash); padding: var(--space-3);
+}
+
+/* ---------- 8. TASK CARDS ---------- */
+
+/* Card border carries run state:
+   hairline = idle, ink+1px = running, ink+2px = wants you. */
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+
+.card {
+  border: 1px solid var(--rule); border-radius: var(--r-card);
+  padding: var(--space-4);
+}
+.card--running   { border-color: var(--ink-60); }
+.card--attention { border-color: var(--ink); border-width: 2px; }
+
+.card__title { font-size: var(--fs-lead); font-weight: 500; }
+.card__foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-3); margin-top: var(--space-2);
+}
+.card__meta { font-family: var(--font-data); font-size: var(--fs-meta); color: var(--ink-35); }
+.card__controls { display: flex; align-items: center; gap: var(--space-3); flex: none; }
+
+/* Trash is HIDDEN while a task is running — never disabled.
+   A disabled control invites a click that does nothing. */
+.card--running .icon-trash,
+.card--attention .icon-trash { display: none; }
+
+.add-card {
+  border: 1px dashed var(--ink-35); border-radius: var(--r-card);
+  padding: var(--space-4); min-height: 88px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 7px; color: var(--ink-60); cursor: pointer;
+}
+
+/* ---------- 9. OPTIONS NAV ---------- */
+
+.options { display: flex; border: 1px solid var(--rule); border-radius: var(--r-page); overflow: hidden; }
+.nav { width: 152px; flex: none; border-right: 1px solid var(--rule); padding: var(--space-4) 0; }
+.nav__item { font-size: var(--fs-body); padding: 7px var(--space-4); color: var(--ink-60); cursor: pointer; }
+.nav__item--active {
+  color: var(--ink); font-weight: 500;
+  background: var(--wash); border-left: 2px solid var(--ink);
+  padding-left: 14px;
+}
+.options__content { flex: 1; min-width: 0; padding: var(--space-5) var(--space-5); }
+
+/* ---------- 10. MOTION ---------- */
+
+/* One orchestrated moment: a new ledger row fading in. Nothing else
+   moves. The confirm gate is instant — safety UI must not animate,
+   because a fading modal invites a click before it is readable. */
+@keyframes step-in { from { opacity: 0 } to { opacity: 1 } }
+.step--new { animation: step-in 120ms ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .step--new { animation: none; }
+  * { transition: none !important; }
+}
