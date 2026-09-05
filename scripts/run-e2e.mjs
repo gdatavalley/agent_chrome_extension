@@ -33,6 +33,23 @@ const SCENARIOS = {
     command: { kind: 'start', task: { title: 'Download invoices', site: `${HARNESS}/spike.html`, readOnly: false } },
     expect: (r) => r.run.state === 'complete' && r.run.creditsUsed > 0 && r.steps.some((s) => s.verb === 'Done'),
   },
+  // Runs after "default" in the same browser session: the second run of the
+  // same task replays the remembered path (tier 1) with zero model calls.
+  replay: {
+    command: { kind: 'start', task: { title: 'Download invoices', site: `${HARNESS}/spike.html`, readOnly: false } },
+    expect: (r) =>
+      r.run.state === 'complete' &&
+      r.run.creditsUsed === 0 &&
+      r.steps.some((s) => s.tier === 1) &&
+      r.steps.some((s) => /Replaying a remembered path/.test(s.verb)),
+  },
+  escalate: {
+    command: { kind: 'start', task: { title: '[escalate] Download invoices', site: `${HARNESS}/spike.html`, readOnly: false } },
+    expect: (r) =>
+      r.run.state === 'complete' &&
+      r.steps.some((s) => s.tier === 3) &&
+      r.steps.some((s) => /Escalated to a screenshot/.test(s.verb)),
+  },
   stuck: {
     command: { kind: 'start', task: { title: '[stuck] Export the vendor list', site: `${HARNESS}/spike.html`, readOnly: false } },
     expect: (r) => r.run.state === 'stopped:stuck',
@@ -63,6 +80,8 @@ const SCENARIOS = {
       r.run.creditsUsed > 0 &&
       r.steps.some((s) => s.kind === 'action'),
   },
+  // Marker — the hosted flow is bespoke (runHosted), not declarative.
+  hosted: { command: { kind: 'stopAll' }, expect: () => true },
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -201,6 +220,89 @@ async function runScenario(name) {
   return false;
 }
 
+// ---------------------------------------------------------- hosted flow ---
+// Full M6 path against the local backend: device-code sign-in → hosted proxy
+// run → exact debit → out-of-credits → top-up → resume → complete.
+function unwrap(res) {
+  return res?.result?.value?.result ?? res?.result?.value;
+}
+
+async function waitForReport(predicate, timeoutMs = 90_000, autoApprove = false) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (existsSync(RESULTS)) {
+      const report = JSON.parse(readFileSync(RESULTS, 'utf8'));
+      if (report.run) {
+        if (autoApprove && report.run.state === 'paused:gate' && report.gates.some((g) => g.status === 'pending')) {
+          await pushCommand({ kind: 'approveGates' });
+          rmSync(RESULTS);
+          continue;
+        }
+        if (predicate(report)) return report;
+      }
+    }
+    await sleep(700);
+  }
+  return null;
+}
+
+async function runHosted() {
+  const backend = spawn('npx', ['tsx', 'src/dev.ts'], { cwd: resolve('backend'), shell: true });
+  backend.stdout.on('data', (d) => process.stdout.write(String(d).replace(/^/gm, '[api] ')));
+  backend.stderr.on('data', (d) => process.stdout.write(String(d).replace(/^/gm, '[api!] ')));
+  let pass = true;
+  try {
+    let up = false;
+    for (let i = 0; i < 40 && !up; i++) {
+      up = await fetch('http://localhost:8787/health').then((r) => r.ok).catch(() => false);
+      if (!up) await sleep(250);
+    }
+    if (!up) throw new Error('backend never came up on 8787');
+
+    const signin = unwrap(await pushCommand({ kind: 'hostedSignin' }));
+    const userId = signin.userId;
+    console.log(`[e2e] hosted sign-in ok — trial balance ${signin.credits}`);
+
+    // 1. A hosted run completes and the server debits exactly what the run metered.
+    if (existsSync(RESULTS)) rmSync(RESULTS);
+    await pushCommand({ kind: 'start', mode: 'hosted', task: { title: 'Dismiss the cookie banner, then apply the filters', site: `${HARNESS}/spike.html`, readOnly: false } });
+    const done = await waitForReport((r) => ['complete', 'stopped:stuck'].includes(r.run.state), 120_000, true);
+    const balance = await (await fetch(`http://localhost:8787/test/balance/${userId}`)).json();
+    const debited = 500 - balance.balance;
+    pass = pass && !!done && done.run.state === 'complete' && debited === done.run.creditsUsed;
+    console.log(`[e2e] hosted run: state=${done?.run.state}, creditsUsed=${done?.run.creditsUsed}, serverDebit=${debited}`);
+
+    // 2. Out of credits → paused:credits → top up → resume → completes (§9.7).
+    await fetch('http://localhost:8787/test/credits', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, amount: -(balance.balance - 1) }),
+    });
+    rmSync(RESULTS);
+    await pushCommand({ kind: 'start', mode: 'hosted', task: { title: 'Apply the filters', site: `${HARNESS}/spike.html`, readOnly: false } });
+    const paused = await waitForReport((r) => r.run.state === 'paused:credits', 120_000, true);
+    pass = pass && !!paused;
+    console.log(`[e2e] out-of-credits pause: ${paused ? 'paused:credits as expected' : 'FAILED — never paused'}`);
+    if (paused) {
+      await fetch('http://localhost:8787/test/credits', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, amount: 1000 }),
+      });
+      rmSync(RESULTS);
+      await pushCommand({ kind: 'resumeLatest' });
+      const resumed = await waitForReport((r) => r.run.state === 'complete', 120_000, true);
+      pass = pass && !!resumed;
+      console.log(`[e2e] top-up → resume: ${resumed ? 'complete' : 'FAILED'}`);
+    }
+  } catch (err) {
+    console.error('[e2e] hosted scenario error:', String(err));
+    pass = false;
+  } finally {
+    killTree(backend.pid);
+  }
+  console.log(`[e2e] scenario "hosted": ${pass ? 'PASS' : 'FAIL'}`);
+  return pass;
+}
+
 await ensureServer();
 
 const wxt = spawn('npx', ['wxt'], {
@@ -217,7 +319,11 @@ await sleep(4000); // SW + first paint settle
 const names = SCENARIO === 'all' ? Object.keys(SCENARIOS) : [SCENARIO];
 let allPass = true;
 for (const name of names) {
-  allPass = (await runScenario(name)) && allPass;
+  if (name === 'hosted') {
+    allPass = (await runHosted()) && allPass;
+  } else {
+    allPass = (await runScenario(name)) && allPass;
+  }
 }
 
 killTree(wxt.pid);

@@ -143,6 +143,37 @@ async function route(msg: Request & { type: string }): Promise<unknown> {
         return { approved: pending.length };
       }
       if (cmd.kind === 'stopAll') return stopAllRuns();
+      if (cmd.kind === 'hostedSignin') {
+        const worker = 'http://localhost:8787';
+        const d = await (await fetch(`${worker}/auth/device`, { method: 'POST' })).json();
+        await fetch(`${worker}/test/confirm`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ user_code: d.user_code }),
+        });
+        const t = await (await fetch(`${worker}/auth/device/token`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ device_code: d.device_code }),
+        })).json();
+        const { storeTokenPair, refreshEntitlementSnapshot } = await import('../src/llm/entitlement');
+        await storeTokenPair(t);
+        await refreshEntitlementSnapshot();
+        const { setLlmMode } = await import('../src/llm/resolve');
+        await setLlmMode('hosted');
+        const me = await (await fetch(`${worker}/v1/me`, {
+          headers: { authorization: `Bearer ${t.access_token}` },
+        })).json();
+        return { userId: me.user_id, credits: me.credits_remaining };
+      }
+      if (cmd.kind === 'resumeLatest') {
+        const runs = await db.runs.toArray();
+        const run = runs
+          .filter((r) => r.state.startsWith('paused:'))
+          .sort((a, b) => b.startedAt - a.startedAt)[0];
+        if (!run) throw new Error('no paused run to resume');
+        const out = await resumeRun(run.id);
+        if (out.error) throw new Error(out.error);
+        return { runId: run.id };
+      }
       throw new Error(`unknown dev command: ${cmd.kind}`);
     }
     case 'loop:exited': return onLoopExited((msg as unknown as { runId: string }).runId);

@@ -1,0 +1,22 @@
+{
+  "name": "browser-agent-backend",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Hosted-tier backend for the Browser Agent extension (spec §8). Cloudflare Worker in production; runs in plain Node for local dev/tests.",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/dev.ts",
+    "test": "vitest run",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3",
+    "vitest": "^3.0.5"
+  }
+}

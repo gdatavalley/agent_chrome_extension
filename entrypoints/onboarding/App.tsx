@@ -96,13 +96,12 @@ function HostedSignIn({ onDone }: { onDone: () => void }) {
           if (tok.status === 428) continue; // pending
           if (!tok.ok) throw new Error(`sign-in failed (${tok.status})`);
           const body = await tok.json();
-          await send({ type: 'dev:report', payload: null }).catch(() => {}); // no-op keep-alive
-          const { setSetting } = await import('../../src/memory/db');
-          await setSetting('entitlement.accessToken', body.access_token);
-          await setSetting('entitlement.refreshToken', body.refresh_token);
-          await setSetting('entitlement.creditsRemaining', body.credits_remaining ?? 500);
+          const { storeTokenPair, refreshEntitlementSnapshot } = await import('../../src/llm/entitlement');
+          await storeTokenPair(body);
+          await refreshEntitlementSnapshot().catch(() => {});
           const { setLlmMode } = await import('../../src/llm/resolve');
           await setLlmMode('hosted');
+          setStatus('Signed in');
           if (!cancelled) onDone();
           return;
         }

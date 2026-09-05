@@ -138,10 +138,13 @@ export async function resumeRun(runId: string): Promise<{ error?: string }> {
       run.tabId = tab.id;
     }
     await db.runs.update(runId, { tabId: run.tabId, state: 'running', detachReason: undefined });
-    await attachDebugger(run.tabId!, runId);
   } else {
     await db.runs.update(runId, { state: 'running' });
   }
+
+  // Loops detach on every pause (gate timer, credits, auth) — re-attach
+  // before resuming regardless of the paused flavour.
+  if (run.tabId != null) await attachDebugger(run.tabId, runId);
 
   await ensureOffscreen();
   await sendToOffscreen({ type: 'run:resume-loop', runId });
@@ -218,7 +221,12 @@ export async function onLoopExited(runId: string): Promise<void> {
 
 async function attachDebugger(tabId: number, runId: string): Promise<void> {
   if (attachedRuns.get(tabId) === runId) return;
-  await chrome.debugger.attach({ tabId }, '1.3');
+  try {
+    await chrome.debugger.attach({ tabId }, '1.3');
+  } catch (err) {
+    // SW restarts lose the registry — the debugger may already be attached.
+    if (!/already attached/i.test(String(err))) throw err;
+  }
   attachedRuns.set(tabId, runId);
 }
 

@@ -12,6 +12,7 @@
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
     "compile": "tsc --noEmit",
+    "test": "vitest run",
     "spike:serve": "node scripts/serve.mjs",
     "spike": "node scripts/run-e2e.mjs",
     "e2e": "node scripts/run-e2e.mjs",

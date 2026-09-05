@@ -15,6 +15,10 @@ export class Escalation {
   readonly failures: FailureRecord[] = [];
   private consecutiveMisses = 0;
 
+  get misses(): number {
+    return this.consecutiveMisses;
+  }
+
   // Element not found / action had no effect at this tier.
   noteMiss(stepN: number, summary: string): void {
     this.failures.push({ stepN, summary });
@@ -25,8 +29,12 @@ export class Escalation {
     this.consecutiveMisses = 0;
   }
 
-  // M3 ships tiers 2 + 5 only: two consecutive misses at tier 2 mean stuck.
-  // M8 adds tier 3 (screenshot) between them.
+  // Tier 2 → 3 after the first miss (M8): same element index, more signal.
+  shouldEscalateToScreenshot(): boolean {
+    return this.consecutiveMisses >= 1 && this.tier === 2;
+  }
+
+  // Hand off after two consecutive misses at the highest built tier.
   shouldHandOff(maxTier: Tier): boolean {
     return this.consecutiveMisses >= 2 && this.tier >= maxTier;
   }

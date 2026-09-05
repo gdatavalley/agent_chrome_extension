@@ -2,12 +2,12 @@ import { defineConfig } from 'wxt';
 import { readFileSync } from 'node:fs';
 
 // Bridge a plain OPENAI_API_KEY in .env into the WXT_* channel Vite exposes
-// to the bundle. The value is never logged; it is inlined into the DEV bundle
-// only — production builds must ship with an empty .env (keys belong in the
-// encrypted store, §10.5).
-if (!process.env.WXT_OPENAI_API_KEY) {
+// to the bundle. DEV BUILDS ONLY — Vite inlines env vars, and a production
+// bundle must never carry the key (keys belong in the encrypted store, §10.5).
+if (process.env.NODE_ENV === 'development' && !process.env.WXT_OPENAI_API_KEY) {
   try {
-    const m = readFileSync('.env', 'utf8').match(/^OPENAI_API_KEY=["']?([^"'\r\n]+)["']?\s*$/m);
+    const m = readFileSync('.env', 'utf8').match(/^OPENAI_API_KEY=["']?([^"'\r\n]+)["']?\s*$/m)
+      ?? readFileSync('.env', 'utf8').match(/^WXT_OPENAI_API_KEY=["']?([^"'\r\n]+)["']?\s*$/m);
     if (m?.[1]) process.env.WXT_OPENAI_API_KEY = m[1];
   } catch { /* no .env — mock mode still works */ }
 }

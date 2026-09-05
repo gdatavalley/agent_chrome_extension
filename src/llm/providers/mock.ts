@@ -47,6 +47,10 @@ export function mockProvider(): Provider {
               tried: ['Looked for a button named "Export" or "Download"', 'Waited and retried twice'],
               help: 'Show me where to click, or describe it differently.',
             };
+      } else if (taskTitle.startsWith('[escalate]')) {
+        // First answer is a bad index — forces a miss, the tier-3 escalation,
+        // and the screenshot path. Then behave normally.
+        action = n === 1 ? { action: 'click', index: 999 } : defaultPlan(menu, taskTitle, history.length);
       } else if (taskTitle.startsWith('[gate]')) {
         const idx = findIndex(menu, /delete/i);
         action = n < 2 && idx != null

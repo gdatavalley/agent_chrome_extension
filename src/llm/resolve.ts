@@ -32,10 +32,15 @@ export async function resolveLlm(): Promise<ResolvedLlm> {
   }
 
   // hosted
-  const token = await getSetting<string | null>('entitlement.accessToken', null);
-  const workerUrl = await getSetting<string>('backend.workerUrl', 'http://localhost:8787');
-  if (!token) throw new PausedError('auth', 'not signed in');
-  return { provider: hostedProvider(workerUrl, token), model, mode };
+  try {
+    const { ensureAccessToken } = await import('./entitlement');
+    const token = await ensureAccessToken();
+    const worker = await getSetting<string>('backend.workerUrl', 'http://localhost:8787');
+    return { provider: hostedProvider(worker, token), model, mode };
+  } catch (err) {
+    if (err instanceof PausedError) throw err;
+    throw new PausedError('auth', 'not signed in');
+  }
 }
 
 export async function setLlmMode(mode: LlmMode): Promise<void> {

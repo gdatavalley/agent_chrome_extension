@@ -1,0 +1,11 @@
+name = "browser-agent-backend"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+# Secrets go in `wrangler secret put`, never here:
+#   OPENAI_API_KEY   — server-side key for the hosted proxy
+#   JWT_SECRET       — HS256 signing secret for entitlement tokens
+#   SUPABASE_URL / SUPABASE_SERVICE_KEY — persistence (§8.2)
+
+[vars]
+ENVIRONMENT = "production"

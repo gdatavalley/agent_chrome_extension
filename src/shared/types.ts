@@ -88,12 +88,24 @@ export interface Gate {
   resolvedAt?: number;
 }
 
+export interface CachedActionStep {
+  role: string;
+  name: string;
+}
+
+export interface CachedSequence {
+  taskTitle: string;
+  outcome: string;
+  files?: string[];
+  steps: CachedActionStep[];
+}
+
 export interface PageMemoryEntry {
   fingerprint: string; // pk — hash(normalised URL + AX tree shape), §4.1
   origin: string;
   url: string;
   actions: Record<string, string>; // "submit button" → resolved selector/index hint
-  successes: string[][]; // action sequences that worked (tier-1 replay, M8)
+  successes: CachedSequence[]; // action sequences that worked (tier-1 replay, M8)
   failures: string[];
   updatedAt: number;
   ttl: number;

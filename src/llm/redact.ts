@@ -4,12 +4,14 @@
 // sensitive values in ordinary page text.
 
 const PATTERNS: Array<{ name: string; re: RegExp; replacement: string }> = [
-  // Card numbers: 13–19 digits, optionally grouped by spaces/dashes
-  { name: 'card', re: /\b(?:\d[ -]?){13,19}\b/g, replacement: '[card]' },
+  // IBAN first — its digit groups otherwise match the card/number patterns.
+  // Groups are 2–4 chars because real IBANs end with a short group; the
+  // replacer validates the overall 15–34 length.
+  { name: 'iban', re: /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{2,4}){3,9}\b/g, replacement: '[iban]' },
+  // Card numbers: 13–19 digits, separators only BETWEEN digits
+  { name: 'card', re: /\b\d(?:[ -]?\d){12,18}\b/g, replacement: '[card]' },
   // Long digit runs (national IDs, account numbers)
   { name: 'long-digits', re: /\b\d{8,}\b/g, replacement: '[number]' },
-  // IBAN
-  { name: 'iban', re: /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}\b/g, replacement: '[iban]' },
 ];
 
 // Luhn check to avoid redacting innocent digit runs that look card-shaped.
@@ -30,14 +32,23 @@ function luhn(digits: string): boolean {
 
 export function redactText(input: string, extraPatterns: RegExp[] = []): string {
   let out = input;
-  const card = PATTERNS.find((p) => p.name === 'card');
-  if (card) {
-    out = out.replace(card.re, (m) => {
-      const digits = m.replace(/\D/g, '');
-      return luhn(digits) ? '[card]' : '[number]';
-    });
+  // Patterns apply in array order — IBAN before card before long-digits,
+  // or the digit groups inside an IBAN get eaten by the generic patterns.
+  for (const p of PATTERNS) {
+    if (p.name === 'card') {
+      out = out.replace(p.re, (m) => {
+        const digits = m.replace(/\D/g, '');
+        return luhn(digits) ? '[card]' : '[number]';
+      });
+    } else if (p.name === 'iban') {
+      out = out.replace(p.re, (m) => {
+        const compact = m.replace(/\s/g, '');
+        return compact.length >= 15 && compact.length <= 34 ? '[iban]' : m;
+      });
+    } else {
+      out = out.replace(p.re, p.replacement);
+    }
   }
-  for (const p of PATTERNS.filter((p) => p.name !== 'card')) out = out.replace(p.re, p.replacement);
   for (const re of extraPatterns) out = out.replace(re, '[redacted]');
   return out;
 }
