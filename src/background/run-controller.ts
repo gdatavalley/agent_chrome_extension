@@ -33,6 +33,13 @@ export async function sendToOffscreen(msg: Record<string, unknown>, attempts = 6
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
+// Every origin a task is allowed to touch: where it starts, plus any extras
+// the user listed (§5.2 domain allowlist per session).
+export function taskOrigins(task: Task): string[] {
+  const start = new URL(task.site).origin;
+  return [...new Set([start, ...(task.extraSites ?? [])])];
+}
+
 export async function startRun(taskId: string): Promise<{ runId?: string; error?: string }> {
   const task = await db.tasks.get(taskId);
   if (!task) return { error: 'Task not found' };
@@ -41,22 +48,29 @@ export async function startRun(taskId: string): Promise<{ runId?: string; error?
   if (active.length >= MAX_CONCURRENT) {
     return { error: `Already ${MAX_CONCURRENT} runs in progress — wait for one to finish.` };
   }
-  const taskOrigin = new URL(task.site).origin;
-  if (active.some((r) => r.origins.some((o) => o === taskOrigin))) {
+  const origins = taskOrigins(task);
+  // §3.4: two runs sharing a cookie jar make each other's element index stale.
+  // Refuse if ANY allowed origin overlaps an active run's.
+  if (active.some((r) => r.origins.some((o) => origins.includes(o)))) {
     return { error: 'A run is already active on this site — one per site at a time.' };
   }
 
   // Runtime per-site grants (§6.1): no grant → the run parks as blocked and
-  // the panel's Blocked screen (UI §9.7) offers Grant access. Chrome match
-  // patterns reject ports, so permission checks use the host-only pattern.
-  const hasAccess = await chrome.permissions.contains({ origins: [permissionPattern(task.site)] });
+  // the panel's Blocked screen (UI §9.7) offers Grant access. Park on the first
+  // origin still missing; resuming re-checks and parks again if another is too.
+  const missing: string[] = [];
+  for (const origin of origins) {
+    const granted = await chrome.permissions.contains({ origins: [permissionPattern(origin)] });
+    if (!granted) missing.push(origin);
+  }
+  const hasAccess = missing.length === 0;
 
   const run: Run = {
     id: crypto.randomUUID(),
     taskId,
     taskTitle: task.title,
     state: 'queued',
-    origins: [taskOrigin],
+    origins,
     readOnly: task.readOnly,
     maxSteps: task.maxSteps,
     stepCount: 0,
@@ -64,7 +78,7 @@ export async function startRun(taskId: string): Promise<{ runId?: string; error?
     tier: 2,
     scheduled: false,
     startedAt: Date.now(),
-    ...(hasAccess ? {} : { error: `no-access:${taskOrigin}/*` }),
+    ...(hasAccess ? {} : { error: `no-access:${missing[0]}/*` }),
   };
   await db.runs.put(run);
   await db.tasks.update(taskId, { missedReason: undefined });
@@ -113,8 +127,15 @@ export async function resumeRun(runId: string): Promise<{ error?: string }> {
   if (run.error?.startsWith('no-access:')) {
     const task = await db.tasks.get(run.taskId);
     if (!task) return { error: 'Task not found' };
-    const granted = await chrome.permissions.contains({ origins: [permissionPattern(task.site)] });
-    if (!granted) return { error: 'Access not granted yet' };
+    // Re-check every allowed origin; park again on the next one still missing.
+    for (const origin of taskOrigins(task)) {
+      const granted = await chrome.permissions.contains({ origins: [permissionPattern(origin)] });
+      if (!granted) {
+        await db.runs.update(runId, { error: `no-access:${origin}/*` });
+        await refreshBadge();
+        return { error: 'Access not granted yet' };
+      }
+    }
     const tab = await chrome.tabs.create({ url: task.site, active: true });
     if (tab.id == null) return { error: 'Could not open a tab for the run' };
     await db.runs.update(runId, { tabId: tab.id, error: undefined, state: 'queued' });

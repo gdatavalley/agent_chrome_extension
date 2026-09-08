@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run compile)",
+      "Bash(npm run build)",
+      "Bash(npm test)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx vitest run)",
+      "WebFetch(domain:developer.chrome.com)",
+      "WebFetch(domain:chromedevtools.github.io)",
+      "WebFetch(domain:issues.chromium.org)",
+      "WebFetch(domain:source.chromium.org)",
+      "WebFetch(domain:wxt.dev)",
+      "WebFetch(domain:supabase.com)",
+      "WebFetch(domain:www.postgresql.org)"
+    ]
+  }
+}

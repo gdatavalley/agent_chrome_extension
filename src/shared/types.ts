@@ -21,7 +21,10 @@ export type DetachReason = 'replaced_with_devtools' | 'canceled_by_user' | 'targ
 export interface Task {
   id: string;
   title: string;
-  site: string; // origin, e.g. https://expenses.acme-corp.com
+  site: string; // START origin — the tab the run opens on
+  // Additional origins the agent may use during the run (§5.2 "domain
+  // allowlist per session"). The run's allowlist is site + these.
+  extraSites?: string[];
   readOnly: boolean; // default ON (spec §5.1)
   maxSteps: number;
   maxCredits?: number;
@@ -155,7 +158,11 @@ export interface GuardrailDefaults {
 
 export const DEFAULT_GUARDRAILS: GuardrailDefaults = {
   readOnly: true,
-  maxSteps: 25,
+  // Spec §11 suggests 25, but real tasks measured here run past it — a
+  // 13-step marketplace lookup left little headroom for retries, and hitting
+  // the cap reads as a failure. Metering is per-token (§9.1), so a higher cap
+  // costs nothing on tasks that finish early.
+  maxSteps: 50,
   allowNewTabs: false,
   allowOffOrigin: false,
   allowIframes: true,
@@ -167,7 +174,10 @@ export interface ModelConfig {
   inputPer1M: number;
   cachedInputPer1M: number;
   outputPer1M: number;
-  reasoningEffort: 'low' | 'medium' | 'high';
+  // 'off' omits reasoning_effort entirely — models that don't accept the
+  // parameter reject the whole request, so this has to be expressible in config
+  // rather than being a code change (§7.6).
+  reasoningEffort: 'low' | 'medium' | 'high' | 'off';
 }
 
 // Fallback only — §7.6: model IDs and prices live in remote config.
@@ -178,6 +188,33 @@ export const DEFAULT_MODEL: ModelConfig = {
   outputPer1M: 1.2,
   reasoningEffort: 'low',
 };
+
+// Which tier is paying for inference. 'mock' is the dev stand-in, 'byok' bills
+// the user's own provider account, 'hosted' spends credits we sold them.
+export type BillingTier = 'mock' | 'byok' | 'hosted';
+
+// Credit allowance per hosted plan (§9.4). Drives the meter denominator, so a
+// Pro user stops being told they have "N of 500 trial credits".
+export const PLAN_CREDITS: Record<string, number> = {
+  trial: 500,
+  starter: 7_000,
+  pro: 14_000,
+  power: 35_000,
+};
+
+const TRIAL_CREDITS = 500;
+
+export function planAllowance(plan: string | undefined): number {
+  return PLAN_CREDITS[(plan ?? 'trial').toLowerCase()] ?? TRIAL_CREDITS;
+}
+
+// How the plan reads in the UI. BYOK and mock have no plan — saying "trial"
+// there is simply false.
+export function planLabel(mode: BillingTier, plan: string | undefined): string {
+  if (mode === 'byok') return 'your own key';
+  if (mode === 'mock') return 'mock provider';
+  return plan ?? 'trial';
+}
 
 export interface UsageObject {
   prompt_tokens: number;

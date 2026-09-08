@@ -2,7 +2,10 @@
 // the current task name. All state renders from Dexie via liveQuery; the
 // ledger is aria-live and each step is a list item (§13 accessibility).
 import { useEffect, useRef, useState } from 'react';
-import { db, useLiveQuery, useMeter, useRun, useRunSteps, clockTime, duration, formatCredits, tasksLeftEstimate } from '../../src/ui/shared';
+import {
+  db, useLiveQuery, useMeter, useRun, useRunSteps, useBilling,
+  clockTime, duration, creditHeadline, creditSubline,
+} from '../../src/ui/shared';
 import { send } from '../../src/shared/messages';
 import type { Gate, Run, Step } from '../../src/shared/types';
 
@@ -267,8 +270,9 @@ function Complete({ run }: { run: Run }) {
         {run.stepCount} steps · {duration(run.startedAt, run.endedAt)} · {run.creditsUsed} credits
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
+        {/* Deep link to THIS run's ledger, not just the Runs list. */}
         <a className="btn btn--outline btn--block" style={{ textDecoration: 'none' }}
-           href={chrome.runtime.getURL('options.html') + '#runs'} target="_blank" rel="noreferrer">View full log</a>
+           href={chrome.runtime.getURL('options.html') + `#runs:${run.id}`} target="_blank" rel="noreferrer">View full log</a>
       </div>
     </>
   );
@@ -337,22 +341,27 @@ function Footer({ run }: { run: Run }) {
 
 function MeterStrip({ meter }: { meter: ReturnType<typeof useMeter> }) {
   // Hosted credit balance is advisory from the entitlement (§8.1b); the
-  // ledger server-side is authoritative. BYOK shows tokens + dollars, no bar.
-  const mode = useLiveQuery(() => db.settings.get('llm.mode'), []);
-  const hosted = useLiveQuery(() => db.settings.get('entitlement.creditsRemaining'), []);
-  if (mode?.value === 'byok' && meter) {
+  // ledger server-side is authoritative. BYOK shows tokens + dollars and gets
+  // NO bar — there is no cap, so drawing one would invent a limit (UI §5).
+  const { mode, remaining, allowance } = useBilling();
+
+  if (mode === 'byok') {
     return (
       <div className="meter__label">
-        {Math.round(meter.byokTokens / 1000)}K tokens · ${meter.byokCostUsd.toFixed(2)} this month<br />your key
+        {Math.round((meter?.byokTokens ?? 0) / 1000)}K tokens · ${(meter?.byokCostUsd ?? 0).toFixed(2)} this month<br />your key
       </div>
     );
   }
-  const remaining = typeof hosted?.value === 'number' ? (hosted.value as number) : 500;
+  if (mode === 'mock') {
+    return <div className="meter__label">mock provider<br />nothing is being spent</div>;
+  }
   return (
     <>
-      <div className="meter__track"><div className="meter__fill" style={{ width: `${Math.min(100, (remaining / 500) * 100)}%` }} /></div>
+      <div className="meter__track">
+        <div className="meter__fill" style={{ width: `${Math.min(100, (remaining / allowance) * 100)}%` }} />
+      </div>
       <div className="meter__label">
-        {formatCredits(remaining)} of 500 trial credits<br />{tasksLeftEstimate(remaining, meter)}
+        {creditHeadline(remaining, allowance)}<br />{creditSubline(remaining, allowance, meter)}
       </div>
     </>
   );

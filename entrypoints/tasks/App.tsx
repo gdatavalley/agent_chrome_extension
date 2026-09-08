@@ -1,12 +1,13 @@
 // Tasks tab — the library, the launcher, and live status of every run
 // (UI spec §7). Compose is the product's only free-text input (§8).
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   db, useLiveQuery, useMeter, useRuns, useTasks,
   formatCredits, relTime, scheduleLabel, tasksLeftEstimate,
 } from '../../src/ui/shared';
 import { send } from '../../src/shared/messages';
-import { DEFAULT_GUARDRAILS, type Run, type Task } from '../../src/shared/types';
+import { getSetting } from '../../src/memory/db';
+import { DEFAULT_GUARDRAILS, type GuardrailDefaults, type Run, type Task } from '../../src/shared/types';
 import { isTerminal } from '../../src/shared/types';
 
 export function App() {
@@ -15,6 +16,7 @@ export function App() {
   const meter = useMeter();
   const hosted = useLiveQuery(() => db.settings.get('entitlement.creditsRemaining'), []);
   const [composing, setComposing] = useState(false);
+  const [editing, setEditing] = useState<Task | undefined>(undefined);
   const [notice, setNotice] = useState<string | null>(null);
 
   const liveRuns = useMemo(
@@ -26,7 +28,8 @@ export function App() {
     return (
       <Page>
         <Compose
-          onDone={() => setComposing(false)}
+          existing={editing}
+          onDone={() => { setComposing(false); setEditing(undefined); }}
         />
       </Page>
     );
@@ -45,6 +48,11 @@ export function App() {
       setNotice('A run is already active on this site — one per site at a time.');
       return;
     }
+    // Open the viewer BEFORE starting the run. run:start awaits Dexie,
+    // tabs.create, the debugger attach and the offscreen handshake, which can
+    // outlast this page's ~5s transient activation — and sidePanel.open()
+    // needs that activation.
+    await openPanel();
     try {
       const out = await send<{ runId: string }>({ type: 'run:start', taskId: task.id });
       await send({ type: 'panel:watch', runId: out.runId });
@@ -76,7 +84,11 @@ export function App() {
             task={t}
             run={activeRunFor(t.id)}
             onPlay={() => void play(t)}
-            onWatch={(runId) => void send({ type: 'panel:watch', runId })}
+            onEdit={() => { setEditing(t); setComposing(true); }}
+            onWatch={(runId) => {
+              void openPanel();
+              void send({ type: 'panel:watch', runId });
+            }}
             onDelete={async () => {
               await db.gates.where('runId').anyOf((runs ?? []).filter((r) => r.taskId === t.id).map((r) => r.id)).delete().catch(() => {});
               await send({ type: 'task:delete', taskId: t.id });
@@ -95,6 +107,17 @@ export function App() {
   );
 }
 
+// sidePanel.open() requires a user gesture. Called from a page it sees Blink
+// transient activation, which lasts ~5s and survives awaits; the copy forwarded
+// into the service worker dies at the first yield, which is why this cannot
+// live in the background router (UI §4.1).
+async function openPanel(): Promise<void> {
+  try {
+    const win = await chrome.windows.getCurrent();
+    if (win.id != null) await chrome.sidePanel.open({ windowId: win.id });
+  } catch { /* not fatal — the panel is still reachable from the toolbar */ }
+}
+
 function Page({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '32px 24px' }}>
@@ -106,11 +129,12 @@ function Page({ children }: { children: React.ReactNode }) {
 // Card border carries run state (UI §7.1): hairline idle, ink-60 running,
 // 2px ink when it wants you. Trash is hidden while running, never disabled.
 function TaskCard({
-  task, run, onPlay, onWatch, onDelete,
+  task, run, onPlay, onEdit, onWatch, onDelete,
 }: {
   task: Task;
   run: Run | undefined;
   onPlay: () => void;
+  onEdit: () => void;
   onWatch: (runId: string) => void;
   onDelete: () => void;
 }) {
@@ -134,11 +158,14 @@ function TaskCard({
               : `${relTime(task.lastRunAt)} · ${scheduleLabel(task)}`}
         </span>
         <span className="card__controls">
+          {/* Controls are hidden while running, never disabled (UI §7.2) —
+              a disabled control invites a click that does nothing. */}
           {!running && !needsYou && (
             <>
               <button aria-label="Delete task" className="icon-trash" style={iconBtn} onClick={() => {
                 if (confirm(`Delete "${task.title}"? Its schedule and cached page memory go with it.`)) onDelete();
               }}>🗑</button>
+              <button aria-label="Edit task" style={iconBtn} onClick={onEdit}>✎</button>
               <button aria-label="Run task" style={iconBtn} onClick={onPlay}>▶</button>
             </>
           )}
@@ -161,15 +188,43 @@ const iconBtn: React.CSSProperties = {
 // never flip the default silently.
 const WRITE_HINT = /\b(submit|send|pay|rename|upload|post|delete)\b/i;
 
-function Compose({ onDone }: { onDone: () => void }) {
-  const [title, setTitle] = useState('');
-  const [site, setSite] = useState('');
-  const [readOnly, setReadOnly] = useState(true);
-  const [maxSteps, setMaxSteps] = useState(25);
-  const [scheduled, setScheduled] = useState(false);
-  const [day, setDay] = useState(1);
-  const [time, setTime] = useState('09:00');
+// Parses one origin per line (or comma separated), tolerating a missing scheme.
+function parseOrigins(raw: string): { origins: string[]; bad: string[] } {
+  const origins: string[] = [];
+  const bad: string[] = [];
+  for (const piece of raw.split(/[\n,]/).map((s) => s.trim()).filter(Boolean)) {
+    try {
+      origins.push(new URL(piece.startsWith('http') ? piece : `https://${piece}`).origin);
+    } catch {
+      bad.push(piece);
+    }
+  }
+  return { origins: [...new Set(origins)], bad };
+}
+
+function Compose({ existing, onDone }: { existing?: Task; onDone: () => void }) {
+  const [defaults, setDefaults] = useState<GuardrailDefaults>(DEFAULT_GUARDRAILS);
+  const [title, setTitle] = useState(existing?.title ?? '');
+  const [site, setSite] = useState(existing?.site ?? '');
+  const [extra, setExtra] = useState((existing?.extraSites ?? []).join('\n'));
+  const [readOnly, setReadOnly] = useState(existing?.readOnly ?? DEFAULT_GUARDRAILS.readOnly);
+  const [maxSteps, setMaxSteps] = useState(existing?.maxSteps ?? DEFAULT_GUARDRAILS.maxSteps);
+  const [scheduled, setScheduled] = useState(existing?.schedule != null);
+  const [day, setDay] = useState(existing?.schedule?.days[0] ?? 1);
+  const [time, setTime] = useState(existing?.schedule?.time ?? '09:00');
   const [error, setError] = useState<string | null>(null);
+
+  // New tasks inherit the saved Guardrails profile (Settings → Guardrails),
+  // not the compile-time constants. Editing keeps whatever the task already had.
+  useEffect(() => {
+    void getSetting('guardrails', DEFAULT_GUARDRAILS).then((g) => {
+      setDefaults(g);
+      if (!existing) {
+        setReadOnly(g.readOnly);
+        setMaxSteps(g.maxSteps);
+      }
+    });
+  }, [existing]);
 
   const writeHint = WRITE_HINT.test(title);
 
@@ -182,17 +237,24 @@ function Compose({ onDone }: { onDone: () => void }) {
     } catch {
       return setError('The site needs to be a URL, like https://expenses.example.com');
     }
+    const { origins: extraOrigins, bad } = parseOrigins(extra);
+    if (bad.length > 0) {
+      return setError(`These don't look like site URLs: ${bad.join(', ')}`);
+    }
     const task: Task = {
-      id: crypto.randomUUID(),
+      id: existing?.id ?? crypto.randomUUID(),
       title: title.trim(),
       site: origin,
+      extraSites: extraOrigins.filter((o) => o !== origin),
       readOnly,
       maxSteps,
-      allowNewTabs: DEFAULT_GUARDRAILS.allowNewTabs,
-      allowOffOrigin: DEFAULT_GUARDRAILS.allowOffOrigin,
-      allowIframes: DEFAULT_GUARDRAILS.allowIframes,
+      allowNewTabs: existing?.allowNewTabs ?? defaults.allowNewTabs,
+      allowOffOrigin: existing?.allowOffOrigin ?? defaults.allowOffOrigin,
+      allowIframes: existing?.allowIframes ?? defaults.allowIframes,
       schedule: scheduled ? { days: [day], time } : null,
-      createdAt: Date.now(),
+      createdAt: existing?.createdAt ?? Date.now(),
+      lastRunAt: existing?.lastRunAt,
+      missedReason: existing?.missedReason,
     };
     await send({ type: 'task:save', task });
     onDone();
@@ -200,7 +262,7 @@ function Compose({ onDone }: { onDone: () => void }) {
 
   return (
     <>
-      <h3 className="h3" style={{ marginBottom: 18 }}>New task</h3>
+      <h3 className="h3" style={{ marginBottom: 18 }}>{existing ? 'Edit task' : 'New task'}</h3>
       <textarea
         className="textarea"
         style={{ marginBottom: 16 }}
@@ -215,8 +277,24 @@ function Compose({ onDone }: { onDone: () => void }) {
         </div>
       )}
       <div className="setting-row">
-        <span>Site</span>
-        <input className="input mono" style={{ width: 260, fontSize: 12 }} placeholder="https://" value={site} onChange={(e) => setSite(e.target.value)} aria-label="Site URL" />
+        <span>Start on</span>
+        <input className="input mono" style={{ width: 260, fontSize: 12 }} placeholder="https://" value={site} onChange={(e) => setSite(e.target.value)} aria-label="Start site URL" />
+      </div>
+      <div className="setting-row" style={{ alignItems: 'flex-start' }}>
+        <span style={{ paddingTop: 8 }}>
+          Also allowed
+          <span className="meta" style={{ display: 'block', color: 'var(--ink-60)', maxWidth: '30ch' }}>
+            Other sites this task may use. One per line.
+          </span>
+        </span>
+        <textarea
+          className="input mono"
+          style={{ width: 260, fontSize: 12, height: 62, resize: 'vertical', padding: '8px 10px' }}
+          placeholder="https://another.example.com"
+          value={extra}
+          onChange={(e) => setExtra(e.target.value)}
+          aria-label="Additional allowed sites"
+        />
       </div>
       <div className="setting-row">
         <span>Read only</span>

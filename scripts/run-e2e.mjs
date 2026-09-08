@@ -101,13 +101,31 @@ async function ensureServer() {
 }
 
 // ------------------------------------------------------------------- CDP ---
+// The countdown starts the moment `npx wxt` is spawned, but WXT has to boot a
+// dev server, build the whole extension, and only then hand off to web-ext to
+// launch Chrome. On a cold Vite cache that alone can outrun a 30s budget, and
+// the symptom is an opaque "CDP endpoint never came up" with a half-finished
+// build above it — so this is generous and reports progress while it waits.
+const CDP_WAIT_MS = 150_000;
 async function waitForCdp() {
-  for (let i = 0; i < 60; i++) {
+  const started = Date.now();
+  let lastLog = 0;
+  while (Date.now() - started < CDP_WAIT_MS) {
     const ok = await fetch(`${CDP}/json/version`).then((r) => r.ok).catch(() => false);
-    if (ok) return;
+    if (ok) {
+      console.log(`[e2e] CDP up on ${CDP_PORT} after ${Math.round((Date.now() - started) / 1000)}s`);
+      return;
+    }
+    const elapsed = Date.now() - started;
+    if (elapsed - lastLog >= 15_000) {
+      lastLog = elapsed;
+      console.log(`[e2e] still waiting for Chrome on ${CDP_PORT} (${Math.round(elapsed / 1000)}s)`);
+    }
     await sleep(500);
   }
-  throw new Error(`CDP endpoint never came up on ${CDP_PORT}`);
+  throw new Error(
+    `CDP endpoint never came up on ${CDP_PORT} after ${CDP_WAIT_MS / 1000}s — check the [wxt] output above for a build error or a browser that failed to launch`,
+  );
 }
 
 // Stream console + exceptions from every extension target (SW, offscreen)
@@ -193,20 +211,35 @@ async function runScenario(name) {
   await pushCommand(sc.command);
   console.log(`[e2e] scenario "${name}" started`);
 
-  const deadline = Date.now() + 90_000;
+  // 180s, not 90s: the `real` scenario makes several live model calls, each a
+  // network round trip on top of perception.
+  const deadline = Date.now() + 180_000;
   let approved = !sc.then;
   while (Date.now() < deadline) {
     if (existsSync(RESULTS)) {
       const report = JSON.parse(readFileSync(RESULTS, 'utf8'));
       if (report.run) {
+        // A scenario declaring `then` used to be judged ONLY after its gate
+        // fired, so a run that reached a terminal state without ever hitting
+        // one span out to a timeout instead of being assessed. Gates are
+        // model-dependent — `real` may or may not touch a gated control — so a
+        // finished run is always evaluated on its merits.
+        const terminal = report.run.state === 'complete'
+          || String(report.run.state).startsWith('stopped:');
         if (sc.then && sc.waitFor?.(report)) {
+          // Clear the stale report BEFORE approving, not after. Approving lets
+          // the loop run to completion, and with the mock provider that can
+          // finish — and post its final report — while pushCommand is still
+          // awaiting its CDP round trip. Deleting afterwards ate that report
+          // and the scenario timed out waiting for one that had already been
+          // written. This was the `gate` flake.
+          rmSync(RESULTS);
           await pushCommand(sc.then);
           console.log('[e2e] gate pending as expected — approving through gate:resolve');
-          rmSync(RESULTS);
           approved = true;
           continue;
         }
-        if (approved) {
+        if (approved || terminal) {
           const pass = sc.expect(report);
           console.log(`[e2e] scenario "${name}": ${pass ? 'PASS' : 'FAIL'} (state=${report.run.state}, steps=${report.run.stepCount}, credits=${report.run.creditsUsed})`);
           if (!pass) console.log(JSON.stringify(report, null, 2).slice(0, 3000));
@@ -234,8 +267,9 @@ async function waitForReport(predicate, timeoutMs = 90_000, autoApprove = false)
       const report = JSON.parse(readFileSync(RESULTS, 'utf8'));
       if (report.run) {
         if (autoApprove && report.run.state === 'paused:gate' && report.gates.some((g) => g.status === 'pending')) {
-          await pushCommand({ kind: 'approveGates' });
+          // Same lost-report race as runScenario — clear before approving.
           rmSync(RESULTS);
+          await pushCommand({ kind: 'approveGates' });
           continue;
         }
         if (predicate(report)) return report;
@@ -312,22 +346,32 @@ const wxt = spawn('npx', ['wxt'], {
 wxt.stdout.on('data', (d) => process.stdout.write(String(d).replace(/^/gm, '[wxt] ')));
 wxt.stderr.on('data', (d) => process.stdout.write(String(d).replace(/^/gm, '[wxt!] ')));
 
-await waitForCdp();
-const stopWatching = await watchConsoles();
-await sleep(4000); // SW + first paint settle
-
-const names = SCENARIO === 'all' ? Object.keys(SCENARIOS) : [SCENARIO];
+// Children must be reaped even when startup throws. Previously a failure in
+// waitForCdp skipped the killTree calls below, orphaning the WXT dev server and
+// its browser — which then squatted the dev-server port and made every
+// subsequent run fail for a different reason than the first one did.
 let allPass = true;
-for (const name of names) {
-  if (name === 'hosted') {
-    allPass = (await runHosted()) && allPass;
-  } else {
-    allPass = (await runScenario(name)) && allPass;
-  }
-}
+let stopWatching = () => {};
+try {
+  await waitForCdp();
+  stopWatching = await watchConsoles();
+  await sleep(4000); // SW + first paint settle
 
-killTree(wxt.pid);
-if (server) killTree(server.pid);
-stopWatching();
+  const names = SCENARIO === 'all' ? Object.keys(SCENARIOS) : [SCENARIO];
+  for (const name of names) {
+    if (name === 'hosted') {
+      allPass = (await runHosted()) && allPass;
+    } else {
+      allPass = (await runScenario(name)) && allPass;
+    }
+  }
+} catch (err) {
+  console.error(`[e2e] aborted: ${err instanceof Error ? err.message : String(err)}`);
+  allPass = false;
+} finally {
+  killTree(wxt.pid);
+  if (server) killTree(server.pid);
+  stopWatching();
+}
 console.log(`\n[e2e] ${allPass ? 'ALL SCENARIOS PASS' : 'FAILURES PRESENT'}`);
 setTimeout(() => process.exit(allPass ? 0 : 1), 1500);

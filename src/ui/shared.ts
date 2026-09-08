@@ -1,8 +1,8 @@
 // Shared UI helpers: Dexie live queries, meter formatting, time formatting.
 // All copy follows UI spec §14 (sentence case, contractions, no "successfully").
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../memory/db';
-import type { MeterStats, Run, Step, Task } from '../shared/types';
+import { db, getSetting } from '../memory/db';
+import { planAllowance, type BillingTier, type MeterStats, type Run, type Step, type Task } from '../shared/types';
 
 export { useLiveQuery };
 export { db };
@@ -66,6 +66,38 @@ export function tasksLeftEstimate(creditsRemaining: number, meter: MeterStats | 
 
 export function formatCredits(n: number): string {
   return n.toLocaleString('en-US');
+}
+
+// Billing context, read once and shared by every meter surface so the panel,
+// the Tasks header and Spending can never disagree about what tier you're on.
+export function useBilling(): { mode: BillingTier; plan: string; remaining: number; allowance: number } {
+  const mode = useLiveQuery(() => getSetting<BillingTier>('llm.mode', 'mock'), []);
+  const plan = useLiveQuery(() => getSetting<string>('entitlement.plan', 'trial'), []);
+  const remaining = useLiveQuery(() => getSetting<number | null>('entitlement.creditsRemaining', null), []);
+  const resolvedPlan = plan ?? 'trial';
+  const allowance = planAllowance(resolvedPlan);
+  return {
+    mode: mode ?? 'mock',
+    plan: resolvedPlan,
+    remaining: remaining ?? allowance,
+    allowance,
+  };
+}
+
+// UI §5: at >85% consumed the label gains a second line rather than recolouring
+// the bar — the palette's one colour is reserved for gates and the ! badge.
+export function creditHeadline(remaining: number, allowance: number): string {
+  return `${formatCredits(remaining)} of ${formatCredits(allowance)} credits`;
+}
+
+export function creditSubline(
+  remaining: number,
+  allowance: number,
+  meter: MeterStats | undefined,
+): string {
+  const used = allowance - remaining;
+  if (allowance > 0 && used / allowance > 0.85) return 'running low — top up or upgrade';
+  return tasksLeftEstimate(remaining, meter);
 }
 
 export function scheduleLabel(task: Task): string {

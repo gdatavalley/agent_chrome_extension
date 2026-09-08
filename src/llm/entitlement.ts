@@ -50,6 +50,8 @@ export async function refreshEntitlementSnapshot(): Promise<void> {
   if (res.ok) {
     const me = await res.json();
     await setSetting('entitlement.creditsRemaining', me.credits_remaining);
+    // The plan drives the meter denominator and the Account label (§9.4).
+    if (typeof me.plan === 'string') await setSetting('entitlement.plan', me.plan);
   }
 }
 

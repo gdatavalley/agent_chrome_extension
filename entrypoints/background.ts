@@ -1,7 +1,8 @@
 // Service worker entrypoint — thin event router, holds no state (spec §2.1).
 // Durable state lives in Dexie; orchestration lives in src/background/*.
-import { db } from '../src/memory/db';
+import { db, getSetting, setSetting } from '../src/memory/db';
 import { encryptText, decryptText } from '../src/shared/crypto';
+import { DEFAULT_MODEL } from '../src/shared/types';
 import type { KeyRecord, LLMProviderId } from '../src/shared/types';
 import type { Request, Response } from '../src/shared/messages';
 import type { DetachReason } from '../src/shared/types';
@@ -67,8 +68,10 @@ async function route(msg: Request & { type: string }): Promise<unknown> {
       const out = await startRun(msg.taskId);
       if (out.error) throw new Error(out.error);
       // Surface the run in the panel (UI §4.1: the panel opens when a run starts).
-      const win = await chrome.windows.getCurrent().catch(() => null);
-      if (win?.id != null) await chrome.sidePanel.open({ windowId: win.id }).catch(() => {});
+      // The OPEN itself happens in the calling page, not here: sidePanel.open()
+      // requires a user gesture, and the gesture forwarded into the worker dies
+      // at the first await — by this line we have awaited Dexie, tabs.create and
+      // the offscreen handshake. We only record which run the panel should show.
       await chrome.storage.session.set({ 'panel.currentRunId': out.runId });
       return out;
     }
@@ -105,9 +108,8 @@ async function route(msg: Request & { type: string }): Promise<unknown> {
       return { removed };
     }
     case 'panel:watch': {
+      // Records the target run only — the caller opens the panel (see run:start).
       await chrome.storage.session.set({ 'panel.currentRunId': msg.runId });
-      const win = await chrome.windows.getCurrent().catch(() => null);
-      if (win?.id != null) await chrome.sidePanel.open({ windowId: win.id }).catch(() => {});
       return null;
     }
     case 'dev:report': {
@@ -191,26 +193,64 @@ const PROVIDER_ENDPOINTS: Partial<Record<LLMProviderId, { origin: string; url: s
   gemini: { origin: 'https://generativelanguage.googleapis.com/*', url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent' },
 };
 
+// Extracts the provider's own message from an error body so a wrong model id
+// doesn't masquerade as a bad key.
+function providerMessage(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: string } };
+    if (parsed.error?.message) return parsed.error.message;
+  } catch { /* not JSON — fall through to the raw text */ }
+  return body.slice(0, 200);
+}
+
+// The real one-token round trip (§10.5). Assumes host access is already held.
+async function pingProvider(provider: LLMProviderId, key: string, url: string): Promise<void> {
+  if (provider !== 'openai') throw new Error(`Verification for ${provider} isn't wired up yet.`);
+
+  // Model id comes from config, never a literal (§7.6) — a deprecated or
+  // unavailable model must be fixable in Settings, not in a Web Store review.
+  const { model } = await getSetting('model.config', DEFAULT_MODEL);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+    body: JSON.stringify({ model, messages: [{ role: 'user', content: 'ping' }] }),
+  });
+  if (res.ok) return;
+
+  const detail = providerMessage(await res.text().catch(() => ''));
+  if (res.status === 401 || res.status === 403) {
+    throw new Error(`The provider rejected that key. ${detail}`.trim());
+  }
+  if (res.status === 404 || res.status === 400) {
+    throw new Error(
+      `The provider didn't accept model "${model}". Set one your account can reach in Settings → Models. ${detail}`.trim(),
+    );
+  }
+  throw new Error(`The provider answered ${res.status}. ${detail}`.trim());
+}
+
+// Add path. chrome.permissions.request MUST be the first await here: the
+// caller's user gesture is forwarded into the service worker synchronously and
+// is gone after a single microtask — a settings or Dexie read above this line
+// makes the grant fail with "must be called during a user gesture". The check
+// runs even for an already-granted origin, so this path always needs a gesture.
 async function verifyKeyRoundTrip(provider: LLMProviderId, key: string): Promise<void> {
   const ep = PROVIDER_ENDPOINTS[provider];
   if (!ep) throw new Error(`unknown provider ${provider}`);
   const granted = await chrome.permissions.request({ origins: [ep.origin] });
-  if (!granted) throw new Error(`access to ${ep.origin} was not granted`);
+  if (!granted) throw new Error(`Access to ${ep.origin} was not granted.`);
+  await pingProvider(provider, key, ep.url);
+}
 
-  if (provider === 'openai') {
-    const res = await fetch(ep.url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
-      body: JSON.stringify({
-        model: 'gpt-5.6-luna', max_tokens: 1,
-        messages: [{ role: 'user', content: 'ping' }],
-      }),
-    });
-    if (res.status === 401 || res.status === 403) throw new Error('The provider rejected that key.');
-    if (!res.ok) throw new Error(`The provider answered ${res.status} — try again in a moment.`);
-    return;
-  }
-  throw new Error(`verification for ${provider} is not wired yet`);
+// Re-test path. Runs after Dexie reads, so it can never satisfy the gesture
+// check — it asserts existing access with permissions.contains(), which has no
+// gesture requirement, instead of asking for it again.
+async function revalidateKey(provider: LLMProviderId, key: string): Promise<void> {
+  const ep = PROVIDER_ENDPOINTS[provider];
+  if (!ep) throw new Error(`unknown provider ${provider}`);
+  const has = await chrome.permissions.contains({ origins: [ep.origin] });
+  if (!has) throw new Error(`Access to ${ep.origin} isn't granted. Delete this key and add it again.`);
+  await pingProvider(provider, key, ep.url);
 }
 
 async function addKey(
@@ -231,6 +271,13 @@ async function addKey(
     lastVerifiedAt: Date.now(),
   };
   await db.keys.put(rec);
+  // A verified key that nothing uses is the worst failure mode in the product:
+  // llm.mode stays 'mock', so every run completes against providers/mock.ts and
+  // reads as a success. Adopt BYOK on the first key — but only from 'mock', so
+  // this never overrides a hosted sign-in.
+  if ((await getSetting<string>('llm.mode', 'mock')) === 'mock') {
+    await setSetting('llm.mode', 'byok');
+  }
   return { keyId: rec.id, label: rec.label };
 }
 
@@ -238,7 +285,7 @@ async function testKey(keyId: string): Promise<{ verified: boolean }> {
   const rec = await db.keys.get(keyId);
   if (!rec) throw new Error('key not found');
   const key = await decryptText(rec.ciphertext, rec.iv);
-  await verifyKeyRoundTrip(rec.provider, key);
+  await revalidateKey(rec.provider, key);
   await db.keys.update(keyId, { lastVerifiedAt: Date.now() });
   return { verified: true };
 }

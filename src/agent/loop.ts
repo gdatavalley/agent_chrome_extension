@@ -105,7 +105,7 @@ export class AgentLoop {
       await this.row('info', 'Reading the page…');
     }
 
-    let perception = await perceive(run.id, run.tabId);
+    let perception = await this.perceiveSettled(run.tabId);
     if (run.stepCount === 0) {
       await this.row('info', `Found ${perception.elements.length} things to interact with`, {
         note: `${new URL(task.site).host}\n${task.readOnly ? 'read only' : 'can write'} · max ${task.maxSteps} steps${task.allowNewTabs ? '' : '\nno new tabs'}`,
@@ -152,7 +152,7 @@ export class AgentLoop {
       if (needsElement && !el) {
         await this.miss(run, `model picked #${action.index}, not in the current menu`, perception);
         await this.maybeEscalate();
-        perception = await perceive(run.id, run.tabId);
+        perception = await this.perceiveSettled(run.tabId);
         if (await this.maybeHandOff(run)) return;
         continue;
       }
@@ -213,11 +213,24 @@ export class AgentLoop {
         ref: el ? `⟨${el.role} #${el.index}⟩` : undefined,
       });
       await this.checkpoint();
-      perception = await perceive(run.id, run.tabId);
+      perception = await this.perceiveSettled(run.tabId);
     }
   }
 
   // ------------------------------------------------------------ internals ---
+
+  // §3.3: a race condition is fixed by waiting and repeating the identical
+  // observation. Without this a run that starts before its tab finishes
+  // loading perceives an empty document, hands the model an empty menu, and
+  // gets "done" back — reporting success for a page it never saw.
+  private async perceiveSettled(tabId: number, attempts = 4): Promise<Perception> {
+    let perception = await perceive(this.run.id, tabId);
+    for (let i = 0; i < attempts && perception.elements.length === 0; i++) {
+      await sleep(WAIT_RETRY_MS);
+      perception = await perceive(this.run.id, tabId);
+    }
+    return perception;
+  }
 
   private async callModel(perception: Perception): Promise<ModelResult | null> {
     const { run, task } = this;
@@ -308,7 +321,7 @@ export class AgentLoop {
       this.history.push(`${run.stepCount}. Clicked ${el.name}`);
       await this.row('action', 'Clicked', { target: el.name, ref: `⟨${el.role} #${el.index}⟩` });
       await this.checkpoint();
-      perception = await perceive(run.id, tabId);
+      perception = await this.perceiveSettled(tabId);
     }
 
     await this.complete({ action: 'done', outcome: seq.outcome, files: seq.files });

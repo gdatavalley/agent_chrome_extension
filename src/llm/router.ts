@@ -45,7 +45,11 @@ export async function chatCompletions(
     body: JSON.stringify({
       model: args.model.model,
       messages: buildMessages(args.prompt),
-      reasoning_effort: args.model.reasoningEffort, // §7.4: pin low at tiers 2–3
+      // §7.4: pin low at tiers 2–3. 'off' omits the parameter for models that
+      // reject it outright rather than ignoring it.
+      ...(args.model.reasoningEffort !== 'off'
+        ? { reasoning_effort: args.model.reasoningEffort }
+        : {}),
       response_format: { type: 'json_object' },
     }),
     signal: args.signal,
