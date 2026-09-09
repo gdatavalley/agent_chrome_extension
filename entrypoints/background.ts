@@ -16,8 +16,24 @@ import { syncScheduleAlarms, handleScheduleAlarm, detectMissedSchedules } from '
 export default defineBackground(() => {
   // The action icon opens the Tasks tab, never the panel (UI spec §4.1).
   void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
+  // Focus an already-open Tasks tab rather than stacking a new one on every
+  // click — repeated clicks used to pile up duplicates, which read as "the
+  // icon does nothing" when you were already looking at Tasks.
   chrome.action.onClicked.addListener(() => {
-    void chrome.tabs.create({ url: chrome.runtime.getURL('tasks.html') });
+    void (async () => {
+      const url = chrome.runtime.getURL('tasks.html');
+      // Query broadly and compare: tabs.query match patterns are unreliable
+      // here, the same reason permissionPattern() exists in run-controller.
+      const open = (await chrome.tabs.query({})).find((t) => t.url?.startsWith(url));
+      if (open?.id != null) {
+        await chrome.tabs.update(open.id, { active: true });
+        if (open.windowId != null) {
+          await chrome.windows.update(open.windowId, { focused: true }).catch(() => {});
+        }
+        return;
+      }
+      await chrome.tabs.create({ url });
+    })();
   });
 
   chrome.runtime.onInstalled.addListener((details) => {

@@ -7,7 +7,7 @@ import {
   clockTime, duration, creditHeadline, creditSubline,
 } from '../../src/ui/shared';
 import { send } from '../../src/shared/messages';
-import type { Gate, Run, Step } from '../../src/shared/types';
+import { isTerminal, type Gate, type Run, type Step } from '../../src/shared/types';
 
 function useCurrentRunId(): string | undefined {
   const [runId, setRunId] = useState<string | undefined>();
@@ -22,11 +22,16 @@ function useCurrentRunId(): string | undefined {
     chrome.storage.session.onChanged.addListener(sub);
     return () => chrome.storage.session.onChanged.removeListener(sub);
   }, []);
-  // Fall back to the most recent non-terminal run.
+  // Fall back to the most recent NON-TERMINAL run, as the comment always
+  // claimed — the old code took the most recent run of any state, so opening
+  // the panel in a fresh session (panel.currentRunId lives in session storage)
+  // resurrected a run that had finished days ago and presented it as current.
   const latestActive = useLiveQuery(async () => {
     if (runId) return undefined;
     const runs = await db.runs.toArray();
-    return runs.sort((a, b) => b.startedAt - a.startedAt)[0]?.id;
+    return runs
+      .filter((r) => !isTerminal(r.state))
+      .sort((a, b) => b.startedAt - a.startedAt)[0]?.id;
   }, [runId]);
   return runId ?? latestActive;
 }

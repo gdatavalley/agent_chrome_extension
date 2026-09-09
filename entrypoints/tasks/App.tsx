@@ -2,8 +2,8 @@
 // (UI spec §7). Compose is the product's only free-text input (§8).
 import { useEffect, useMemo, useState } from 'react';
 import {
-  db, useLiveQuery, useMeter, useRuns, useTasks,
-  formatCredits, relTime, scheduleLabel, tasksLeftEstimate,
+  db, useMeter, useRuns, useTasks, useBilling,
+  relTime, scheduleLabel, creditHeadline, creditSubline,
 } from '../../src/ui/shared';
 import { send } from '../../src/shared/messages';
 import { getSetting } from '../../src/memory/db';
@@ -14,7 +14,7 @@ export function App() {
   const tasks = useTasks();
   const runs = useRuns();
   const meter = useMeter();
-  const hosted = useLiveQuery(() => db.settings.get('entitlement.creditsRemaining'), []);
+  const { mode, remaining, allowance } = useBilling();
   const [composing, setComposing] = useState(false);
   const [editing, setEditing] = useState<Task | undefined>(undefined);
   const [notice, setNotice] = useState<string | null>(null);
@@ -61,14 +61,34 @@ export function App() {
     }
   };
 
-  const remaining = typeof hosted?.value === 'number' ? (hosted.value as number) : 500;
+  // Billing-aware, like the panel footer and Spending: a BYOK user has no
+  // credit allowance, so quoting one is simply untrue.
+  const headerStatus = waiting > 0
+    ? `${waiting} waiting on you`
+    : liveRuns.length > 0
+      ? `${liveRuns.length} running`
+      : mode === 'byok'
+        ? `${Math.round((meter?.byokTokens ?? 0) / 1000)}K tokens · $${(meter?.byokCostUsd ?? 0).toFixed(2)} this month`
+        : mode === 'mock'
+          ? 'mock provider'
+          : creditHeadline(remaining, allowance);
 
   return (
     <Page>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 16 }}>
         <h3 className="h3">Tasks</h3>
-        <span className="mono meta">
-          {waiting > 0 ? `${waiting} waiting on you` : liveRuns.length > 0 ? `${liveRuns.length} running` : `${formatCredits(remaining)} of 500 trial credits`}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
+          <span className="mono meta">{headerStatus}</span>
+          {/* The only in-product route to Settings when no run is live — the
+              panel's identical ⚙ is unreachable until a run opens it. */}
+          <a
+            href={chrome.runtime.getURL('options.html')}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Settings"
+            title="Settings"
+            style={{ color: 'var(--ink-60)', textDecoration: 'none', fontSize: 16, lineHeight: 1 }}
+          >⚙</a>
         </span>
       </div>
       {notice && <div className="alert" style={{ marginBottom: 14 }}>{notice}</div>}
@@ -100,9 +120,13 @@ export function App() {
           <span>New task</span>
         </button>
       </div>
-      <div style={{ marginTop: 24 }}>
-        <span className="mono meta">{tasksLeftEstimate(remaining, meter)}</span>
-      </div>
+      {/* The rolling-average estimate is denominated in credits, so it only
+          means anything on the hosted tier. */}
+      {mode === 'hosted' && (
+        <div style={{ marginTop: 24 }}>
+          <span className="mono meta">{creditSubline(remaining, allowance, meter)}</span>
+        </div>
+      )}
     </Page>
   );
 }

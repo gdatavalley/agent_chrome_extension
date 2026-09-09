@@ -29,6 +29,12 @@ export function App() {
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', padding: '32px 24px' }}>
+      {/* The two full-tab surfaces only navigated one way, which is part of
+          why Settings read as a dead end. */}
+      <a
+        href={chrome.runtime.getURL('tasks.html')}
+        style={{ color: 'var(--ink-60)', textDecoration: 'none', display: 'inline-block', marginBottom: 18 }}
+      >&larr; Tasks</a>
       <div className="options">
         <div className="nav">
           {SECTIONS.map((s) => (
