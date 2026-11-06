@@ -128,6 +128,31 @@ async function waitForCdp() {
   );
 }
 
+// The extension loads AFTER the CDP endpoint is up: web-ext launches Chrome
+// first and installs the extension into it second, and the gap has run past
+// the fixed 4s settle below. The symptom was "no extension target to receive
+// the command" before a scenario even started — so wait for a target.
+const EXT_WAIT_MS = 60_000;
+async function findExtensionTarget() {
+  const targets = await fetch(`${CDP}/json/list`).then((r) => r.json()).catch(() => []);
+  const ext = targets.filter((t) => t.url?.startsWith('chrome-extension://'));
+  const sw = ext.find((t) => t.type === 'service_worker');
+  return { sw, target: sw ?? ext.find((t) => t.type === 'page') };
+}
+async function waitForExtension() {
+  const started = Date.now();
+  while (Date.now() - started < EXT_WAIT_MS) {
+    if ((await findExtensionTarget()).target) {
+      console.log(`[e2e] extension target up after ${Math.round((Date.now() - started) / 1000)}s`);
+      return;
+    }
+    await sleep(500);
+  }
+  throw new Error(
+    `no extension target after ${EXT_WAIT_MS / 1000}s — check the [wxt] output above for a failed extension install`,
+  );
+}
+
 // Stream console + exceptions from every extension target (SW, offscreen)
 // so silent failures inside the extension are visible in the log.
 const watchedTargets = new Set();
@@ -169,11 +194,7 @@ async function watchConsoles() {
 // (runtime.sendMessage from the SW never loops back to its own listener);
 // from any extension page, sendMessage wakes the SW and delivers normally.
 async function pushCommand(command) {
-  const targets = await (await fetch(`${CDP}/json/list`)).json();
-  const ext = targets.filter((t) => t.url?.startsWith('chrome-extension://'));
-  const sw = ext.find((t) => t.type === 'service_worker');
-  const page = ext.find((t) => t.type === 'page');
-  const target = sw ?? page;
+  const { sw, target } = await findExtensionTarget();
   if (!target) throw new Error('no extension target to receive the command');
 
   const expression = sw
@@ -284,14 +305,27 @@ async function runHosted() {
   const backend = spawn('npx', ['tsx', 'src/dev.ts'], { cwd: resolve('backend'), shell: true });
   backend.stdout.on('data', (d) => process.stdout.write(String(d).replace(/^/gm, '[api] ')));
   backend.stderr.on('data', (d) => process.stdout.write(String(d).replace(/^/gm, '[api!] ')));
+  // A cold `npx tsx` start has taken 18s here, past the old 10s budget — the
+  // symptom was "backend never came up" with the [api] ready line printed
+  // moments later. Wait generously, but fail fast if the process dies (e.g.
+  // EADDRINUSE from a stale backend that isn't answering /health).
+  let exitCode;
+  backend.on('exit', (code) => { exitCode = code ?? 'signal'; });
   let pass = true;
   try {
+    const BACKEND_WAIT_MS = 90_000;
+    const started = Date.now();
     let up = false;
-    for (let i = 0; i < 40 && !up; i++) {
+    while (!up && Date.now() - started < BACKEND_WAIT_MS) {
       up = await fetch('http://localhost:8787/health').then((r) => r.ok).catch(() => false);
-      if (!up) await sleep(250);
+      if (up) break;
+      if (exitCode !== undefined) {
+        throw new Error(`backend exited (${exitCode}) before answering on 8787 — see the [api!] output above`);
+      }
+      await sleep(500);
     }
-    if (!up) throw new Error('backend never came up on 8787');
+    if (!up) throw new Error(`backend never came up on 8787 after ${BACKEND_WAIT_MS / 1000}s`);
+    console.log(`[e2e] backend up after ${Math.round((Date.now() - started) / 1000)}s`);
 
     const signin = unwrap(await pushCommand({ kind: 'hostedSignin' }));
     const userId = signin.userId;
@@ -354,6 +388,7 @@ let allPass = true;
 let stopWatching = () => {};
 try {
   await waitForCdp();
+  await waitForExtension();
   stopWatching = await watchConsoles();
   await sleep(4000); // SW + first paint settle
 
